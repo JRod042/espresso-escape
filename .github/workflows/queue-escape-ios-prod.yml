@@ -1,0 +1,115 @@
+name: Queue Escape iOS production
+
+# One-shot: push to this branch queues a NEW EAS production IPA for
+# Espresso Escape 1.0.4 / iOS build 10 / ASC-locked vibecode bundle.
+# Does NOT submit. Does NOT rebuild or upload Failed build 9
+# (EAS 0c3bb93d-6d23-4669-b559-305ab5e5f6b9 / com.jrod042.espressoescape).
+# Escape only — never Casa Rustico Go / shop / Omni.
+on:
+  push:
+    branches:
+      - cursor/queue-escape-ios-10-51a2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/espresso-escape
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm ASC-locked identity (refuse build 9 / jrod042 iOS)
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+
+          expected_bundle = "com.vibecode.espressoescape-20z7xb"
+          expected_version = "1.0.4"
+          expected_build = "10"
+          expected_asc = "6758108565"
+          forbidden_ios = "com.jrod042.espressoescape"
+          forbidden_eas = "0c3bb93d-6d23-4669-b559-305ab5e5f6b9"
+
+          app = json.load(open("app.json"))["expo"]
+          eas = json.load(open("eas.json"))
+          ios = app["ios"]
+          submit = eas["submit"]["production"]["ios"]
+
+          print(
+              f"version={app['version']} ios.buildNumber={ios['buildNumber']} "
+              f"bundle={ios['bundleIdentifier']}"
+          )
+          print(
+              f"submit.bundle={submit.get('bundleIdentifier')} "
+              f"ascAppId={submit.get('ascAppId')}"
+          )
+
+          errors = []
+          if app["version"] != expected_version:
+              errors.append(f"version {app['version']} != {expected_version}")
+          if ios["buildNumber"] != expected_build:
+              errors.append(f"buildNumber {ios['buildNumber']} != {expected_build}")
+          if ios["bundleIdentifier"] != expected_bundle:
+              errors.append(f"bundle {ios['bundleIdentifier']} != {expected_bundle}")
+          if ios["bundleIdentifier"] == forbidden_ios:
+              errors.append("refusing jrod042 iOS bundle (ITMS-90055)")
+          if ios["buildNumber"] == "9":
+              errors.append("refusing Failed build 9")
+          if submit.get("bundleIdentifier") != expected_bundle:
+              errors.append(f"eas submit bundle {submit.get('bundleIdentifier')}")
+          if str(submit.get("ascAppId")) != expected_asc:
+              errors.append(f"ascAppId {submit.get('ascAppId')} != {expected_asc}")
+          if forbidden_eas in json.dumps(eas):
+              errors.append("eas.json must not target Failed build 9")
+
+          if errors:
+              print("IDENTITY CHECK FAILED:", file=sys.stderr)
+              for err in errors:
+                  print(f"  - {err}", file=sys.stderr)
+              sys.exit(1)
+
+          print("IDENTITY OK — queue 1.0.4 / 10 / vibecode → ASC 6758108565")
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/espresso-escape/package-lock.json
+
+      - name: Setup Expo / EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.28.0
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Expo auth
+        run: eas whoami
+
+      - name: Preflight iOS identity
+        run: npm run preflight:ios
+
+      - name: Queue iOS production build (no ASC submit)
+        env:
+          EAS_BUILD_NO_EXPO_GO_WARNING: "true"
+          EXPO_USE_PRECOMPILED_MODULES: "0"
+        run: |
+          echo "Queuing NEW IPA only. Never 0c3bb93d (Failed build 9)."
+          echo "Bundle must be com.vibecode.espressoescape-20z7xb — not com.jrod042.espressoescape."
+          eas build --platform ios --profile production --non-interactive --no-wait
+          echo "Watch: https://expo.dev/accounts/jrod42/projects/espresso-escape/builds"
+
+      - name: Reminder
+        run: |
+          echo "Queued Espresso Escape 1.0.4 / iOS 10 production IPA (vibecode)."
+          echo "Do not submit Failed build 9. Submit only after this IPA is Finished."
+          echo "ASC 6758108565. Shop/Omni untouched."
+          echo "https://expo.dev/accounts/jrod42/projects/espresso-escape/builds"
