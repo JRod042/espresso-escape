@@ -1,0 +1,58 @@
+name: Queue Escape iOS production
+
+# One-shot: push to this branch queues EAS production IPA. Does NOT submit to ASC.
+on:
+  push:
+    branches:
+      - cursor/escape-ios-prod-012f
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/espresso-escape
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm version
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open("app.json"))["expo"]
+          print(f"version={d['version']} ios.buildNumber={d['ios']['buildNumber']} bundle={d['ios']['bundleIdentifier']}")
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/espresso-escape/package-lock.json
+
+      - name: Setup Expo / EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.28.0
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Expo auth
+        run: eas whoami
+
+      - name: Queue iOS production build (no ASC submit)
+        env:
+          EAS_BUILD_NO_EXPO_GO_WARNING: "true"
+          EXPO_USE_PRECOMPILED_MODULES: "0"
+        run: |
+          eas build --platform ios --profile production --non-interactive --no-wait
+          echo "Watch: https://expo.dev/accounts/jrod42/projects/espresso-escape/builds"
+
+      - name: Reminder
+        run: |
+          echo "Queued Espresso Escape 1.0.4 / iOS 9 production IPA. Do not submit to ASC in this pass."
+          echo "https://expo.dev/accounts/jrod42/projects/espresso-escape/builds"
