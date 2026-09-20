@@ -1,0 +1,186 @@
+name: Submit Escape IPA to ASC
+
+# One-shot: push to this branch submits ONLY the Finished 1.0.4 / iOS 11 IPA
+# EAS c995d7d6-b018-425c-9933-eff9457c2946 → ASC 6809059605
+# (Espresso Escape Runner). Does NOT build a new binary.
+# Escape only — never Casa Rustico Go / shop / Omni.
+# FORBIDDEN: Failed build 9 / 0c3bb93d; vibecode ASC 6758108565.
+on:
+  push:
+    branches:
+      - cursor/submit-escape-ios-11-6e6a
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/espresso-escape
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm Jorge identity (refuse Failed build 9 / vibecode ASC)
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+
+          expected_bundle = "com.jrod042.espressoescape"
+          expected_version = "1.0.4"
+          expected_build = "11"
+          expected_asc = "6809059605"
+          allowed_eas = "c995d7d6-b018-425c-9933-eff9457c2946"
+          forbidden_ios = "com.vibecode.espressoescape-20z7xb"
+          forbidden_asc = "6758108565"
+          forbidden_eas = "0c3bb93d-6d23-4669-b559-305ab5e5f6b9"
+
+          app = json.load(open("app.json"))["expo"]
+          eas = json.load(open("eas.json"))
+          ios = app["ios"]
+          submit = eas["submit"]["production"]["ios"]
+
+          print(
+              f"version={app['version']} ios.buildNumber={ios['buildNumber']} "
+              f"bundle={ios['bundleIdentifier']}"
+          )
+          print(
+              f"submit.bundle={submit.get('bundleIdentifier')} "
+              f"ascAppId={submit.get('ascAppId')}"
+          )
+          print(f"allowed EAS build={allowed_eas}")
+
+          errors = []
+          if app["version"] != expected_version:
+              errors.append(f"version {app['version']} != {expected_version}")
+          if ios["buildNumber"] != expected_build:
+              errors.append(f"buildNumber {ios['buildNumber']} != {expected_build}")
+          if ios["buildNumber"] == "9":
+              errors.append("refusing Failed build 9")
+          if "vibecode" in str(ios["bundleIdentifier"]):
+              errors.append(f"refusing vibecode bundle {ios['bundleIdentifier']}")
+          if ios["bundleIdentifier"] == forbidden_ios:
+              errors.append(f"refusing vibecode bundle {ios['bundleIdentifier']}")
+          if ios["bundleIdentifier"] != expected_bundle:
+              errors.append(f"bundle {ios['bundleIdentifier']} != {expected_bundle}")
+          if submit.get("bundleIdentifier") != expected_bundle:
+              errors.append(f"eas submit bundle {submit.get('bundleIdentifier')}")
+          if str(submit.get("ascAppId")) == forbidden_asc:
+              errors.append(f"refusing vibecode ASC {submit.get('ascAppId')}")
+          if str(submit.get("ascAppId")) != expected_asc:
+              errors.append(f"ascAppId {submit.get('ascAppId')} != {expected_asc}")
+          if forbidden_eas in json.dumps(eas) or forbidden_eas in json.dumps(app):
+              errors.append("repo must not target Failed build 9")
+          if allowed_eas == forbidden_eas:
+              errors.append("refusing to submit Failed build 9")
+
+          if errors:
+              print("IDENTITY CHECK FAILED:", file=sys.stderr)
+              for err in errors:
+                  print(f"  - {err}", file=sys.stderr)
+              sys.exit(1)
+
+          print("IDENTITY OK — submit 1.0.4 / 11 / jrod042 → ASC 6809059605")
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/espresso-escape/package-lock.json
+
+      - name: Setup Expo / EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.28.0
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Expo auth
+        run: eas whoami
+
+      - name: Preflight iOS identity
+        run: npm run preflight:ios
+
+      - name: Best-effort inspect IPA c995d7d6 (never block submit)
+        run: |
+          BUILD_ID="c995d7d6-b018-425c-9933-eff9457c2946"
+          FORBIDDEN="0c3bb93d-6d23-4669-b559-305ab5e5f6b9"
+          if [ "$BUILD_ID" = "$FORBIDDEN" ]; then
+            echo "Refusing Failed build 9 ($FORBIDDEN)"
+            exit 1
+          fi
+          echo "Inspecting ONLY https://expo.dev/accounts/jrod42/projects/espresso-escape/builds/${BUILD_ID}"
+          set +e
+          eas build:view "$BUILD_ID" --json --non-interactive > /tmp/ee-build.json 2>/tmp/ee-build.err
+          view_rc=$?
+          set -e
+          echo "build:view exit=$view_rc"
+          echo "----- build:view stderr -----"
+          cat /tmp/ee-build.err || true
+          echo "----- build:view stdout (head) -----"
+          head -c 4000 /tmp/ee-build.json || true
+          echo
+          echo "Proceeding to authorized eas submit --id $BUILD_ID (proven path; view is informational)."
+
+      - name: Write App Store Connect API key (optional)
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "${APPLE_API_KEY_P8:-}" ]; then
+            printf '%s\n' "$APPLE_API_KEY_P8" > asc-api-key.p8
+            echo "EXPO_ASC_API_KEY_PATH=$PWD/asc-api-key.p8" >> "$GITHUB_ENV"
+            echo "ASC API key file written"
+          else
+            echo "No APPLE_API_KEY_P8 secret — using Expo-stored Apple credentials if configured"
+          fi
+
+      - name: Submit Finished IPA to ASC 6809059605
+        env:
+          EXPO_ASC_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          BUILD_ID="c995d7d6-b018-425c-9933-eff9457c2946"
+          ASC_APP_ID="6809059605"
+          FORBIDDEN_BUILD="0c3bb93d-6d23-4669-b559-305ab5e5f6b9"
+          FORBIDDEN_ASC="6758108565"
+          if [ "$BUILD_ID" = "$FORBIDDEN_BUILD" ]; then
+            echo "Refusing Failed build 9"
+            exit 1
+          fi
+          if [ "$ASC_APP_ID" = "$FORBIDDEN_ASC" ]; then
+            echo "Refusing vibecode ASC"
+            exit 1
+          fi
+          echo "Submitting ONLY https://expo.dev/accounts/jrod42/projects/espresso-escape/builds/${BUILD_ID}"
+          echo "Target ASC ${ASC_APP_ID} (Espresso Escape Runner). Never ${FORBIDDEN_ASC}. Never shop/omni."
+
+          submit_once() {
+            # eas-cli 16.28.0 has no --asc-app-id on submit; ASC comes from eas.json production.
+            eas submit \
+              --platform ios \
+              --profile production \
+              --id "$BUILD_ID" \
+              --non-interactive \
+              --verbose
+          }
+
+          if submit_once; then
+            echo "Submit succeeded on first attempt"
+            exit 0
+          fi
+          echo "First attempt failed. Retrying same c995d7d6 → 6809059605 in 90s (do not change binary)."
+          sleep 90
+          submit_once
+
+      - name: Reminder
+        run: |
+          echo "Submitted Espresso Escape 1.0.4 / iOS 11 (c995d7d6) to ASC 6809059605."
+          echo "Never submitted 0c3bb93d / build 9 / ASC 6758108565. Shop/Omni untouched."
+          echo "Expo build: https://expo.dev/accounts/jrod42/projects/espresso-escape/builds/c995d7d6-b018-425c-9933-eff9457c2946"
+          echo "Expo submissions: https://expo.dev/accounts/jrod42/projects/espresso-escape/submissions"
