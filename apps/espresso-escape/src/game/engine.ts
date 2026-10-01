@@ -99,8 +99,14 @@ export function createRun(
 }
 
 export function resizeRun(run: Run, world: World, playerX: number): void {
+  const dy = world.groundY - run.world.groundY;
   run.world = world;
   run.playerX = playerX;
+  if (dy !== 0) {
+    run.playerY += dy;
+    for (const hazard of run.hazards) hazard.y += dy;
+    for (const bean of run.beans) bean.y += dy;
+  }
   const floor = world.groundY - PLAYER_H;
   if (run.playerY > floor) run.playerY = floor;
 }

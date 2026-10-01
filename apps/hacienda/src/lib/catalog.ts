@@ -513,6 +513,29 @@ export function productsIn(cat: CategoryId) {
   return PRODUCTS.filter((p) => p.category === cat);
 }
 
+const REWARD_OFF_CENTS: Record<string, number> = {
+  r25: 70,
+  r50: 325,
+  r150: 450,
+  r200: 750,
+  r400: 1495,
+};
+
+/** Cents taken off the order when this reward is redeemed. */
+export function rewardOffCents(rewardId: string | undefined): number {
+  if (!rewardId) return 0;
+  return REWARD_OFF_CENTS[rewardId] ?? 0;
+}
+
+/**
+ * Beans earned per dollar. Casa Card pays 2×. Hacienda tier pays 2× on any tender,
+ * which is the "2× beans always" perk.
+ */
+export function beanRateFor(lifetimeBeans: number, payWith: "wallet" | "card"): number {
+  if (tierFor(lifetimeBeans).id === "hacienda") return 2;
+  return payWith === "wallet" ? 2 : 1;
+}
+
 export function tierFor(lifetime: number): Tier {
   let current = TIERS[0];
   for (const t of TIERS) {

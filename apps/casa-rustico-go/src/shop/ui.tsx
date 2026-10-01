@@ -1,5 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { formatPrice, type Product } from "../catalog";
+import { priceLabel, type Product } from "../catalog";
 import { colors, fonts } from "../theme";
 
 export function StoreTitle({ title, sub }: { title: string; sub?: string }) {
@@ -24,7 +24,7 @@ export function ProductCard({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${product.name}, ${formatPrice(product.price)}`}
+      accessibilityLabel={`${product.name}, ${priceLabel(product)}`}
       style={({ pressed }) => [large ? ui.cardLarge : ui.card, pressed && ui.pressed]}
     >
       <View style={[ui.photo, large ? ui.photoLarge : ui.photoGrid]}>
@@ -38,7 +38,7 @@ export function ProductCard({
       <Text style={ui.cardName} numberOfLines={1}>
         {product.name}
       </Text>
-      <Text style={ui.cardPrice}>{formatPrice(product.price)}</Text>
+      <Text style={ui.cardPrice}>{priceLabel(product)}</Text>
     </Pressable>
   );
 }

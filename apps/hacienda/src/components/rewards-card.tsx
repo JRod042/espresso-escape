@@ -3,8 +3,8 @@ import type { Profile } from "@/lib/api";
 import { cn } from "@/lib/cn";
 
 export function RewardsCard({ profile }: { profile: Profile }) {
-  const { reward, need } = nextReward(profile.beans);
-  const pct = Math.min(1, profile.beans / reward.beans);
+  const { reward, have, need } = nextReward(profile.beans);
+  const pct = need > 0 ? Math.min(1, have / need) : 1;
   const r = 36;
   const c = 2 * Math.PI * r;
   const dash = c * pct;

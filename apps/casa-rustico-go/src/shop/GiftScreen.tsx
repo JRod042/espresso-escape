@@ -5,23 +5,28 @@ import { useShop } from "../store";
 import { colors, fonts } from "../theme";
 import { BrassButton, Chip, StoreTitle, ui } from "./ui";
 
-export function GiftScreen() {
+export function GiftScreen({ onJoin }: { onJoin: () => void }) {
   const { flash, member } = useShop();
   const [design, setDesign] = useState<(typeof giftDesigns)[number]["id"]>("kraft");
   const [amount, setAmount] = useState<(typeof giftAmounts)[number]>(25);
   const art = giftDesigns.find((d) => d.id === design) ?? giftDesigns[0];
 
   const send = () => {
-    const code = `CASA-${amount}-${Math.abs(Date.now()).toString(36).toUpperCase().slice(-6)}`;
-    flash(member ? `Gift code ${code}` : "Join to send a card");
-    if (member) {
-      void Linking.openURL(`mailto:?subject=Casa Rústico gift&body=A ${formatPrice(amount)} Casa Rústico card. Code ${code}`);
+    if (!member) {
+      onJoin();
+      return;
     }
+    const subject = encodeURIComponent("A Casa Rústico gift");
+    const body = encodeURIComponent(
+      `A Casa Rústico gift — ${formatPrice(amount)} ${art.name}. Choose it at ${brand.siteUrl}`,
+    );
+    flash("Opens Mail with a note. Buy the card on rusticopr.com.");
+    void Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
   };
 
   return (
     <ScrollView contentContainerStyle={s.page} showsVerticalScrollIndicator={false}>
-      <StoreTitle title="Gift." sub="Kraft or highland. A card they redeem on rusticopr.com." />
+      <StoreTitle title="Gift." sub="A note for someone, or buy the card on rusticopr.com." />
       <View style={s.hero}>
         <Image source={{ uri: art.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         <View style={s.heroCopy}>
@@ -42,7 +47,7 @@ export function GiftScreen() {
         ))}
       </ScrollView>
       <View style={{ paddingHorizontal: 20, marginTop: 8, gap: 12 }}>
-        <BrassButton label={member ? `Send ${formatPrice(amount)} card` : "Join to send"} onPress={send} />
+        <BrassButton label={member ? `Email a ${formatPrice(amount)} note` : "Join to send"} onPress={send} />
         <Pressable onPress={() => Linking.openURL(brand.siteUrl)} style={({ pressed }) => pressed && ui.pressed}>
           <Text style={s.link}>Or buy on {brand.site}</Text>
         </Pressable>

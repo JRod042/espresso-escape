@@ -35,6 +35,7 @@ function Gift() {
   return (
     <>
       <LargeTitle kicker="eGift" title="Gift" />
+      <p className="px-5 pb-3 text-[13px] text-muted">Paid from your Casa Card balance.</p>
       <div className="px-5">
         <div className="overflow-hidden rounded-lg">
           <img src={design.image} alt="" className="h-44 w-full object-cover" />
@@ -88,6 +89,7 @@ function Gift() {
             })
               .then(async (r) => {
                 await qc.invalidateQueries({ queryKey: ["gifts"] });
+                await qc.invalidateQueries({ queryKey: ["profile"] });
                 const shareText = `A Casa Rústico eGift for ${money(amount)}. Code ${r.code}`;
                 if (navigator.share) {
                   try {

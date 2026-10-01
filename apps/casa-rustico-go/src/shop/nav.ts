@@ -2,7 +2,7 @@ export type Tab = "home" | "order" | "scan" | "gift" | "stores";
 
 export type Screen =
   | { kind: "tab"; tab: Tab }
-  | { kind: "product"; productId: string; back: Tab }
+  | { kind: "product"; productId: string; back: Tab; fromBag?: boolean }
   | { kind: "bag"; back: Tab }
   | { kind: "ritual"; back: Tab }
   | { kind: "story"; back: Tab }

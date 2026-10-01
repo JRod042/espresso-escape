@@ -210,6 +210,10 @@ export function PlayField({
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const scoreRef = useRef(0);
   const cueRef = useRef<CoachCue>("tap");
+  const bestRef = useRef(best);
+  bestRef.current = best;
+  const onBestRef = useRef(onBest);
+  onBestRef.current = onBest;
 
   const playerStyle = useAnimatedStyle(() => ({
     transform: [
@@ -334,6 +338,7 @@ export function PlayField({
       if (nextScore !== scoreRef.current) {
         scoreRef.current = nextScore;
         setScore(nextScore);
+        if (nextScore > bestRef.current) onBestRef.current(nextScore);
       }
       if (run.cue !== cueRef.current) {
         cueRef.current = run.cue;
@@ -352,7 +357,7 @@ export function PlayField({
 
   useEffect(() => {
     const onApp = (state: AppStateStatus) => {
-      if (state !== "active" && !runRef.current.dead) {
+      if (state === "background" && !runRef.current.dead) {
         runRef.current.paused = true;
         setPaused(true);
       }

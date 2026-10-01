@@ -17,6 +17,7 @@ import { Route as AppGiftRouteImport } from './routes/_app/gift'
 import { Route as AppOrderRouteImport } from './routes/_app/order'
 import { Route as AppScanRouteImport } from './routes/_app/scan'
 import { Route as AppStoresRouteImport } from './routes/_app/stores'
+import { Route as AppOrderIndexRouteImport } from './routes/_app/order.index'
 import { Route as AppOrderIdRouteImport } from './routes/_app/order.$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
@@ -59,6 +60,11 @@ const AppStoresRoute = AppStoresRouteImport.update({
   path: '/stores',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOrderIndexRoute = AppOrderIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppOrderRoute,
+} as any)
 const AppOrderIdRoute = AppOrderIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -80,17 +86,18 @@ export interface FileRoutesByFullPath {
   '/stores': typeof AppStoresRoute
   '/order/$id': typeof AppOrderIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/order/': typeof AppOrderIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/account': typeof AppAccountRoute
   '/gift': typeof AppGiftRoute
-  '/order': typeof AppOrderRouteWithChildren
   '/scan': typeof AppScanRoute
   '/stores': typeof AppStoresRoute
   '/': typeof AppIndexRoute
   '/order/$id': typeof AppOrderIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/order': typeof AppOrderIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,6 +111,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/order/$id': typeof AppOrderIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_app/order/': typeof AppOrderIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,17 +125,18 @@ export interface FileRouteTypes {
     | '/stores'
     | '/order/$id'
     | '/api/auth/$'
+    | '/order/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/account'
     | '/gift'
-    | '/order'
     | '/scan'
     | '/stores'
     | '/'
     | '/order/$id'
     | '/api/auth/$'
+    | '/order'
   id:
     | '__root__'
     | '/_app'
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/order/$id'
     | '/api/auth/$'
+    | '/_app/order/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -206,6 +216,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStoresRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/order/': {
+      id: '/_app/order/'
+      path: '/'
+      fullPath: '/order/'
+      preLoaderRoute: typeof AppOrderIndexRouteImport
+      parentRoute: typeof AppOrderRoute
+    }
     '/_app/order/$id': {
       id: '/_app/order/$id'
       path: '/$id'
@@ -225,10 +242,12 @@ declare module '@tanstack/react-router' {
 
 interface AppOrderRouteChildren {
   AppOrderIdRoute: typeof AppOrderIdRoute
+  AppOrderIndexRoute: typeof AppOrderIndexRoute
 }
 
 const AppOrderRouteChildren: AppOrderRouteChildren = {
   AppOrderIdRoute: AppOrderIdRoute,
+  AppOrderIndexRoute: AppOrderIndexRoute,
 }
 
 const AppOrderRouteWithChildren = AppOrderRoute._addFileChildren(

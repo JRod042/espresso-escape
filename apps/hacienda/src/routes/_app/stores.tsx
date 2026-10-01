@@ -64,7 +64,7 @@ function Stores() {
                   className="flex w-full items-start gap-3 px-4 py-3 text-left"
                   onClick={() => {
                     setSelected(s.id);
-                    setStore(s.id);
+                    if (s.pickup) setStore(s.id);
                   }}
                 >
                   <div className="min-w-0 flex-1">
@@ -72,7 +72,10 @@ function Stores() {
                     <p className="text-[13px] text-muted">
                       {s.address} · {s.city}, {s.region}
                     </p>
-                    <p className="mt-0.5 text-[13px] text-muted">{s.hours}</p>
+                    <p className="mt-0.5 text-[13px] text-muted">
+                      {s.hours}
+                      {s.pickup ? "" : " · Ships — not a pickup counter"}
+                    </p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {s.amenities.map((a) => (
                         <span key={a} className="rounded-full bg-ink/8 px-2 py-0.5 text-[11px]">

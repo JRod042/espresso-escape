@@ -8,6 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "ios:direct": "bash ../../.github/scripts/ios-apple-direct.sh",
     "preflight:ios": "bash ./scripts/preflight-ios.sh",
     "bump:ios": "node ./scripts/bump-ios-build.mjs",
     "check:game": "node ./scripts/check-game.mjs",

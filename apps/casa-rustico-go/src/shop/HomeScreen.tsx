@@ -210,7 +210,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
   },
-  placeImg: { ...StyleSheet.absoluteFillObject },
+  placeImg: { ...StyleSheet.absoluteFill },
   placeCopy: { position: "absolute", left: 14, right: 14, bottom: 14, gap: 2 },
   placeTitle: { color: colors.linen, fontFamily: fonts.display, fontSize: 20 },
   ritual: {
