@@ -13,6 +13,10 @@ npm run dev
 
 Requires Node 22. Bind is `0.0.0.0:8080`.
 
+## Deploy
+
+Hacienda is a Node web app, not an Expo project, so Expo does not bill it. `npm run build` produces the server. Run that output on a Node host with `DATABASE_URL` set to Postgres. With no `DATABASE_URL`, the app uses embedded PGLite, which is for local preview only.
+
 ## Stack
 
 - TanStack Start + React 19 + Tailwind v4

@@ -31,7 +31,7 @@ function ProductPage() {
     queryFn: () => listFavorites(),
     enabled: Boolean(user),
   });
-  const [size, setSize] = useState("12");
+  const [size, setSize] = useState("8");
   const [milk, setMilk] = useState<(typeof MILKS)[number]>("Whole");
   const [shots, setShots] = useState(2);
   const [syrup, setSyrup] = useState<(typeof SYRUPS)[number]>("None");

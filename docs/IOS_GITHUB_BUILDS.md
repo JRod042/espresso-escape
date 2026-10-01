@@ -2,6 +2,34 @@
 
 These are **iOS** App Store apps (not Android-first).
 
+## Ship without an Expo charge
+
+EAS Submit is free. The charge is the **cloud build**: an iOS medium worker is **$2** after the Free plan’s 15 iOS builds. The workflow `.github/workflows/ios-testflight.yml` calls `eas build`, so every TestFlight upload spends a build credit.
+
+**Direct path (no expo.dev bill):** GitHub → **Actions** → **iOS direct to TestFlight**. That job runs on a macOS runner, archives with Xcode, and uploads with Apple’s Transporter. It never calls `eas build` or `eas submit`.
+
+The same script runs on your own Mac (`npm run ios:direct` inside the app folder), which also avoids GitHub macOS minutes.
+
+One-time secrets on the GitHub repo:
+
+| Secret | What it is |
+|---|---|
+| `IOS_DIST_P12_BASE64` | Apple Distribution `.p12`, base64 |
+| `IOS_DIST_P12_PASSWORD` | Password for that `.p12` |
+| `IOS_PROFILE_GO_BASE64` | App Store profile for `com.jrod042.casarusticogo` |
+| `IOS_PROFILE_ESCAPE_BASE64` | App Store profile for `com.jrod042.espressoescape` |
+| `APPLE_API_KEY_P8` | App Store Connect API key contents |
+| `APPLE_API_KEY_ID` | Key id |
+| `APPLE_API_ISSUER_ID` | Issuer id |
+
+Export the `.p12` from Keychain Access (Apple Distribution) or download the cert Expo already stored (`npx eas-cli credentials -p ios` — that download is not a build). Encode with `base64 -i cert.p12`. Profiles come from [developer.apple.com](https://developer.apple.com/account/resources/profiles/list) → App Store → the bundle id.
+
+Bump `ios.buildNumber` with `npm run bump:ios` and commit before each upload. Apple rejects a number it already accepted. Bundle ids stay as they are.
+
+Hacienda is the web café, not an Expo app. Build it with `npm run build` in `apps/hacienda` and run the Node server on whatever host you already use. Expo does not bill it.
+
+## EAS cloud builds (still available)
+
 Hardening below mirrors fixes already proven on **Omni** (`JRod042/project-1`).
 
 > **Current blocker (Aug 23 2026 runs #1–#3)**  

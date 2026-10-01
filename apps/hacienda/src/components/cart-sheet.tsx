@@ -6,7 +6,7 @@ import { Minus, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getProfile, placeOrder } from "@/lib/api";
-import { productById, REWARDS, storeById, STORES } from "@/lib/catalog";
+import { productById, REWARDS, rewardOffCents, storeById, STORES } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { cartTotal, useCart } from "@/store/cart";
@@ -35,13 +35,18 @@ export function CartSheet({
   const [payWith, setPayWith] = useState<"wallet" | "card">("wallet");
   const [redeem, setRedeem] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const total = cartTotal(items);
+  const off = rewardOffCents(redeem);
+  const total = Math.max(0, cartTotal(items) - off);
   const store = storeById(storeId);
 
   async function checkout() {
     if (!user) {
       onOpenChange(false);
       void navigate({ to: "/login" });
+      return;
+    }
+    if (store && !store.pickup) {
+      toast.error("Pick a café. That location ships bags.");
       return;
     }
     setBusy(true);
@@ -217,7 +222,12 @@ export function CartSheet({
           >
             <div className="mb-3 flex items-center justify-between text-[17px]">
               <span>Total</span>
-              <span className="tabular-nums font-medium">{money(total)}</span>
+              <span className="text-right">
+                {off > 0 ? (
+                  <span className="mr-2 text-[13px] font-normal text-muted">−{money(off)}</span>
+                ) : null}
+                <span className="tabular-nums font-medium">{money(total)}</span>
+              </span>
             </div>
             <Button
               size="lg"

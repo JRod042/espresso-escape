@@ -56,7 +56,28 @@ export function ShopShell() {
   }, [count]);
 
   const openProduct = (productId: string) => {
+    if (screen.kind === "bag") {
+      setScreen({ kind: "product", productId, back: screen.back, fromBag: true });
+      return;
+    }
+    if (screen.kind === "product") {
+      setScreen({
+        kind: "product",
+        productId,
+        back: screen.back,
+        fromBag: screen.fromBag,
+      });
+      return;
+    }
     setScreen({ kind: "product", productId, back: tab });
+  };
+  const closeProduct = () => {
+    if (screen.kind !== "product") return;
+    if (screen.fromBag) {
+      setScreen({ kind: "bag", back: screen.back });
+      return;
+    }
+    setScreen({ kind: "tab", tab: screen.back });
   };
   const openTab = (next: Tab) => setScreen({ kind: "tab", tab: next });
   const openBag = () => setScreen({ kind: "bag", back: tab });
@@ -96,7 +117,7 @@ export function ShopShell() {
             <ProductScreen
               key={screen.productId}
               productId={screen.productId}
-              onBack={() => openTab("order")}
+              onBack={closeProduct}
               openProduct={openProduct}
             />
           ) : screen.kind === "bag" ? (
@@ -108,7 +129,11 @@ export function ShopShell() {
           ) : screen.kind === "account" ? (
             <AccountScreen onJoin={openJoin} onStory={openStory} onRitual={openRitual} />
           ) : screen.kind === "join" ? (
-            <JoinScreen onDone={() => setScreen({ kind: "tab", tab: "scan" })} />
+            <JoinScreen
+              onDone={() =>
+                setScreen({ kind: "tab", tab: screen.kind === "join" ? screen.back : "home" })
+              }
+            />
           ) : tab === "home" ? (
             <HomeScreen
               openProduct={openProduct}
@@ -122,7 +147,7 @@ export function ShopShell() {
           ) : tab === "scan" ? (
             <ScanScreen onJoin={openJoin} />
           ) : tab === "gift" ? (
-            <GiftScreen />
+            <GiftScreen onJoin={openJoin} />
           ) : (
             <StoresScreen />
           )}

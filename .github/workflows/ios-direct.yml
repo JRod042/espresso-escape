@@ -1,0 +1,54 @@
+name: iOS direct to TestFlight
+
+# Builds the IPA on a GitHub macOS runner and uploads it with Apple's
+# Transporter. Does not call `eas build` or `eas submit`, so Expo does not
+# charge a build credit. Apple Developer Program membership is still required.
+#
+# One-time secrets (repo → Settings → Secrets):
+#   IOS_DIST_P12_BASE64, IOS_DIST_P12_PASSWORD
+#   IOS_PROFILE_GO_BASE64, IOS_PROFILE_ESCAPE_BASE64
+#   APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER_ID
+# See docs/IOS_GITHUB_BUILDS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to archive and upload
+        required: true
+        type: choice
+        options:
+          - casa-rustico-go
+          - espresso-escape
+        default: casa-rustico-go
+
+jobs:
+  ship:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: apps/${{ inputs.app }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/${{ inputs.app }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Archive and upload to App Store Connect
+        env:
+          IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ inputs.app == 'casa-rustico-go' && secrets.IOS_PROFILE_GO_BASE64 || secrets.IOS_PROFILE_ESCAPE_BASE64 }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_TEAM_ID: FY5H9V76QL
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/ios-apple-direct.sh"

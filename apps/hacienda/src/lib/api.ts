@@ -7,8 +7,10 @@ import {
   PRODUCTS,
   REWARDS,
   STORES,
+  beanRateFor,
   memberNumber,
   productById,
+  rewardOffCents,
   storeById,
   tierFor,
   type Product,
@@ -84,18 +86,17 @@ function giftCode() {
 }
 
 async function ensureProfile(sql: Sql, userId: string): Promise<void> {
-  const existing = await sql<{ user_id: string }>`
-    select user_id from profiles where user_id = ${userId}
-  `;
-  if (existing.length) return;
   const no = memberNumber(userId);
+  // One statement so two first requests cannot both grant welcome beans.
   await sql`
-    insert into profiles (user_id, beans, lifetime_beans, wallet_cents, member_no)
-    values (${userId}, 50, 50, 0, ${no})
-  `;
-  await sql`
+    with ins as (
+      insert into profiles (user_id, beans, lifetime_beans, wallet_cents, member_no)
+      values (${userId}, 50, 50, 0, ${no})
+      on conflict (user_id) do nothing
+      returning user_id
+    )
     insert into bean_ledger (user_id, delta, reason)
-    values (${userId}, 50, 'Welcome to Hacienda Rewards')
+    select user_id, 50, 'Welcome to Hacienda Rewards' from ins
   `;
 }
 
@@ -229,6 +230,9 @@ export const placeOrder = createServerFn({ method: "POST" })
     await ensureProfile(sql, context.userId);
     const store = storeById(data.storeId);
     if (!store) throw new Error("Unknown store");
+    if (!store.pickup) {
+      throw new Error("That location ships bags. Pick a café for mobile order.");
+    }
 
     const priced = data.items.map((item) => {
       const product = productById(item.productId);
@@ -254,51 +258,60 @@ export const placeOrder = createServerFn({ method: "POST" })
       if (!reward) throw new Error("Unknown reward");
       if (prof.beans < reward.beans) throw new Error("Not enough beans");
       beansSpent = reward.beans;
-      if (reward.id === "r25") total = Math.max(0, total - 70);
-      if (reward.id === "r50") total = Math.max(0, total - 325);
-      if (reward.id === "r150") total = Math.max(0, total - 450);
-      if (reward.id === "r200") total = Math.max(0, total - 750);
-      if (reward.id === "r400") total = Math.max(0, total - 1495);
+      total = Math.max(0, total - rewardOffCents(reward.id));
     }
 
     const hour = new Date().getHours();
     const coldBonus = hour >= 14 && priced.some((i) => productById(i.productId)?.category === "cold");
-    const beanRate = data.payWith === "wallet" ? 2 : 1;
+    const beanRate = beanRateFor(prof.lifetime_beans, data.payWith);
     let beansEarned = Math.floor((total / 100) * beanRate);
     if (coldBonus) beansEarned *= 2;
 
-    if (data.payWith === "wallet") {
-      if (prof.wallet_cents < total) {
-        throw new Error("Not enough Casa Card balance. Reload on Scan.");
-      }
-      await sql`update profiles
-        set wallet_cents = wallet_cents - ${total},
-            beans = beans - ${beansSpent} + ${beansEarned},
-            lifetime_beans = lifetime_beans + ${beansEarned}
-        where user_id = ${context.userId}`;
-    } else {
-      await sql`update profiles
-        set beans = beans - ${beansSpent} + ${beansEarned},
-            lifetime_beans = lifetime_beans + ${beansEarned}
-        where user_id = ${context.userId}`;
-    }
-
-    if (beansEarned) {
-      await sql`insert into bean_ledger (user_id, delta, reason)
-        values (${context.userId}, ${beansEarned}, ${"Order · " + store.name})`;
-    }
-    if (beansSpent) {
-      await sql`insert into bean_ledger (user_id, delta, reason)
-        values (${context.userId}, ${-beansSpent}, ${"Redeemed reward"})`;
+    if (data.payWith === "wallet" && prof.wallet_cents < total) {
+      throw new Error("Not enough Casa Card balance. Reload on Scan.");
     }
 
     const itemsJson = JSON.stringify(priced);
-    const inserted = await sql<{ id: number }>`
-      insert into orders (user_id, store_id, status, total_cents, beans_earned, beans_spent, pay_with, items_json)
-      values (${context.userId}, ${data.storeId}, 'preparing', ${total}, ${beansEarned}, ${beansSpent}, ${data.payWith}, ${itemsJson})
-      returning id
-    `;
-    return { orderId: inserted[0].id, totalCents: total, beansEarned, beansSpent };
+    const inserted = await sql.transaction(async (tx) => {
+      const updated = await tx<{ wallet_cents: number }>`
+        update profiles
+        set wallet_cents = case
+              when ${data.payWith} = 'wallet' then wallet_cents - ${total}
+              else wallet_cents
+            end,
+            beans = beans - ${beansSpent} + ${beansEarned},
+            lifetime_beans = lifetime_beans + ${beansEarned}
+        where user_id = ${context.userId}
+          and beans >= ${beansSpent}
+          and (${data.payWith} <> 'wallet' or wallet_cents >= ${total})
+        returning wallet_cents
+      `;
+      if (!updated.length) return null;
+      if (beansEarned) {
+        await tx`insert into bean_ledger (user_id, delta, reason)
+          values (${context.userId}, ${beansEarned}, ${"Order · " + store.name})`;
+      }
+      if (beansSpent) {
+        await tx`insert into bean_ledger (user_id, delta, reason)
+          values (${context.userId}, ${-beansSpent}, ${"Redeemed reward"})`;
+      }
+      const rows = await tx<{ id: number }>`
+        insert into orders (user_id, store_id, status, total_cents, beans_earned, beans_spent, pay_with, items_json)
+        values (${context.userId}, ${data.storeId}, 'preparing', ${total}, ${beansEarned}, ${beansSpent}, ${data.payWith}, ${itemsJson})
+        returning id
+      `;
+      return rows[0] ?? null;
+    });
+    if (!inserted) {
+      const again = (
+        await sql<{ beans: number; wallet_cents: number }>`
+          select beans, wallet_cents from profiles where user_id = ${context.userId}
+        `
+      )[0];
+      if (beansSpent && again.beans < beansSpent) throw new Error("Not enough beans");
+      throw new Error("Not enough Casa Card balance. Reload on Scan.");
+    }
+    return { orderId: inserted.id, totalCents: total, beansEarned, beansSpent };
   });
 
 export const listOrders = createServerFn({ method: "GET" })
@@ -360,29 +373,30 @@ export const scanPay = createServerFn({ method: "POST" })
     const sql = await getSql();
     await ensureProfile(sql, context.userId);
     const store = storeById(data.storeId) ?? STORES[0];
-    const prof = (
-      await sql<{ wallet_cents: number }>`
-        select wallet_cents from profiles where user_id = ${context.userId}
-      `
-    )[0];
-    if (prof.wallet_cents < data.amountCents) {
-      throw new Error("Not enough Casa Card balance. Reload first.");
-    }
     const beansEarned = Math.floor((data.amountCents / 100) * 2);
-    await sql`update profiles
-      set wallet_cents = wallet_cents - ${data.amountCents},
-          beans = beans + ${beansEarned},
-          lifetime_beans = lifetime_beans + ${beansEarned}
-      where user_id = ${context.userId}`;
-    await sql`insert into bean_ledger (user_id, delta, reason)
-      values (${context.userId}, ${beansEarned}, ${"In-store · " + store.name})`;
     const itemsJson = JSON.stringify([
       { productId: "drip", name: "In-store purchase", qty: 1, lineCents: data.amountCents },
     ]);
-    await sql`
-      insert into orders (user_id, store_id, status, total_cents, beans_earned, beans_spent, pay_with, items_json)
-      values (${context.userId}, ${store.id}, 'completed', ${data.amountCents}, ${beansEarned}, 0, 'wallet', ${itemsJson})
-    `;
+    const paid = await sql.transaction(async (tx) => {
+      const updated = await tx<{ wallet_cents: number }>`
+        update profiles
+        set wallet_cents = wallet_cents - ${data.amountCents},
+            beans = beans + ${beansEarned},
+            lifetime_beans = lifetime_beans + ${beansEarned}
+        where user_id = ${context.userId}
+          and wallet_cents >= ${data.amountCents}
+        returning wallet_cents
+      `;
+      if (!updated.length) return false;
+      await tx`insert into bean_ledger (user_id, delta, reason)
+        values (${context.userId}, ${beansEarned}, ${"In-store · " + store.name})`;
+      await tx`
+        insert into orders (user_id, store_id, status, total_cents, beans_earned, beans_spent, pay_with, items_json)
+        values (${context.userId}, ${store.id}, 'completed', ${data.amountCents}, ${beansEarned}, 0, 'wallet', ${itemsJson})
+      `;
+      return true;
+    });
+    if (!paid) throw new Error("Not enough Casa Card balance. Reload first.");
     return { beansEarned, amountCents: data.amountCents };
   });
 
@@ -407,10 +421,22 @@ export const sendGift = createServerFn({ method: "POST" })
     const code = giftCode();
     const email = data.recipientEmail && data.recipientEmail.includes("@") ? data.recipientEmail : null;
     const msg = data.message ?? null;
-    await sql`
-      insert into gifts (user_id, recipient_name, recipient_email, amount_cents, design_id, message, code)
-      values (${context.userId}, ${data.recipientName}, ${email}, ${data.amountCents}, ${data.designId}, ${msg}, ${code})
-    `;
+    const sent = await sql.transaction(async (tx) => {
+      const updated = await tx<{ wallet_cents: number }>`
+        update profiles
+        set wallet_cents = wallet_cents - ${data.amountCents}
+        where user_id = ${context.userId}
+          and wallet_cents >= ${data.amountCents}
+        returning wallet_cents
+      `;
+      if (!updated.length) return false;
+      await tx`
+        insert into gifts (user_id, recipient_name, recipient_email, amount_cents, design_id, message, code)
+        values (${context.userId}, ${data.recipientName}, ${email}, ${data.amountCents}, ${data.designId}, ${msg}, ${code})
+      `;
+      return true;
+    });
+    if (!sent) throw new Error("Not enough Casa Card balance. Reload on Scan.");
     return { code };
   });
 

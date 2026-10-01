@@ -173,4 +173,11 @@ if (play.status !== 0) {
   throw new Error(`playtest failed:\n${play.stdout}\n${play.stderr}`);
 }
 
+const resize = spawnSync(process.execPath, [join(root, "scripts/check-resize.mjs")], {
+  encoding: "utf8",
+});
+if (resize.status !== 0) {
+  throw new Error(`resize check failed:\n${resize.stdout}\n${resize.stderr}`);
+}
+
 console.log("check-game: PASS");

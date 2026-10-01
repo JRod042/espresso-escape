@@ -18,17 +18,18 @@ export async function saveBestScore(score: number): Promise<number> {
   const next = Math.max(prev, score);
   try {
     await AsyncStorage.setItem(HIGH_SCORE_KEY, String(next));
+    return next;
   } catch {
-    // Keep the in-memory best even if disk write fails.
+    return prev;
   }
-  return next;
 }
 
 export async function loadSeenFirstRun(): Promise<boolean> {
   try {
     return (await AsyncStorage.getItem(FIRST_RUN_KEY)) === "1";
   } catch {
-    return false;
+    // A failed read is not "never played". That path skips the menu on every launch.
+    return true;
   }
 }
 

@@ -8,7 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getProduct } from "./catalog";
+import { grantOnReturn } from "./checkout-grant.js";
 import { memberNumber } from "./rewards";
 import { WELCOME_STORAGE_KEY } from "./welcome/theme";
 
@@ -31,6 +34,32 @@ export type Member = {
 
 const CART_KEY = "casa-rustico-go.v4";
 const MEMBER_KEY = "casa-rustico-go.member.v1";
+const GRANT_KEY = "casa-rustico-go.grant.v1";
+
+type PendingGrant = { fingerprint: string; beans: number };
+
+function sanitizeLines(lines: unknown): CartLine[] {
+  if (!Array.isArray(lines)) return [];
+  const out: CartLine[] = [];
+  for (const raw of lines) {
+    if (!raw || typeof raw !== "object") continue;
+    const line = raw as Partial<CartLine>;
+    const qty = Number(line.qty);
+    const price = Number(line.price);
+    const variantId = Number(line.variantId);
+    if (typeof line.productId !== "string" || !line.productId) continue;
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    if (!Number.isFinite(variantId) || !Number.isFinite(price) || price < 0) continue;
+    out.push({
+      productId: line.productId,
+      variantId,
+      variantTitle: typeof line.variantTitle === "string" ? line.variantTitle : "",
+      qty: Math.min(99, Math.floor(qty)),
+      price,
+    });
+  }
+  return out;
+}
 
 type ShopApi = {
   hydrated: boolean;
@@ -48,6 +77,7 @@ type ShopApi = {
   joinRewards: (name: string, email: string) => Member;
   signOutMember: () => void;
   earnBeans: (n: number) => number;
+  armCheckoutGrant: (fingerprint: string, beans: number) => void;
 };
 
 const ShopContext = createContext<ShopApi | null>(null);
@@ -59,32 +89,50 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [member, setMember] = useState<Member | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingGrant = useRef<PendingGrant | null>(null);
+  const lastGrant = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
+      let lines: CartLine[] = [];
+      let nextMember: Member | null = null;
+      let seen = false;
       try {
-        const [rawCart, welcome, rawMember] = await Promise.all([
-          AsyncStorage.getItem(CART_KEY),
-          AsyncStorage.getItem(WELCOME_STORAGE_KEY),
-          AsyncStorage.getItem(MEMBER_KEY),
-        ]);
-        if (!alive) return;
+        const rawCart = await AsyncStorage.getItem(CART_KEY);
         if (rawCart) {
-          const parsed = JSON.parse(rawCart) as { cart?: CartLine[] } | CartLine[];
-          const lines = Array.isArray(parsed) ? parsed : parsed.cart;
-          if (Array.isArray(lines)) setCart(lines);
+          const parsed = JSON.parse(rawCart) as { cart?: unknown } | unknown;
+          const rawLines = Array.isArray(parsed) ? parsed : (parsed as { cart?: unknown })?.cart;
+          lines = sanitizeLines(rawLines);
         }
+      } catch {
+        lines = [];
+      }
+      try {
+        const rawMember = await AsyncStorage.getItem(MEMBER_KEY);
         if (rawMember) {
           const parsed = JSON.parse(rawMember) as Member;
-          if (parsed?.memberNo && parsed?.email) setMember(parsed);
+          if (parsed?.memberNo && parsed?.email) nextMember = parsed;
         }
-        setWelcomeSeen(welcome === "1");
       } catch {
-        if (alive) setWelcomeSeen(false);
-      } finally {
-        if (alive) setHydrated(true);
+        nextMember = null;
       }
+      try {
+        seen = (await AsyncStorage.getItem(WELCOME_STORAGE_KEY)) === "1";
+      } catch {
+        seen = false;
+      }
+      try {
+        const rawGrant = await AsyncStorage.getItem(GRANT_KEY);
+        if (rawGrant) lastGrant.current = rawGrant;
+      } catch {
+        /* a missing grant key just allows the next real return to count */
+      }
+      if (!alive) return;
+      setCart(lines);
+      setMember(nextMember);
+      setWelcomeSeen(seen);
+      setHydrated(true);
     })();
     return () => {
       alive = false;
@@ -176,6 +224,47 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     return awarded;
   }, []);
 
+  const armCheckoutGrant = useCallback((fingerprint: string, beans: number) => {
+    if (!fingerprint || beans <= 0) {
+      pendingGrant.current = null;
+      return;
+    }
+    pendingGrant.current = { fingerprint, beans };
+  }, []);
+
+  const settleCheckoutGrant = useCallback(
+    (leftApp: boolean) => {
+      const decision = grantOnReturn({
+        pending: pendingGrant.current,
+        lastGranted: lastGrant.current,
+        leftApp,
+      });
+      pendingGrant.current = decision.pending;
+      if (decision.lastGranted && decision.lastGranted !== lastGrant.current) {
+        lastGrant.current = decision.lastGranted;
+        void AsyncStorage.setItem(GRANT_KEY, decision.lastGranted).catch(() => undefined);
+      }
+      if (decision.grant > 0) earnBeans(decision.grant);
+      return decision.grant as number;
+    },
+    [earnBeans],
+  );
+
+  useEffect(() => {
+    let left = false;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") {
+        left = true;
+        return;
+      }
+      if (!left) return;
+      left = false;
+      const n = settleCheckoutGrant(true);
+      if (n > 0) flash(`+${n} beans · Hacienda Rewards`);
+    });
+    return () => sub.remove();
+  }, [flash, settleCheckoutGrant]);
+
   const api = useMemo<ShopApi>(
     () => ({
       hydrated,
@@ -193,6 +282,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       joinRewards,
       signOutMember,
       earnBeans,
+      armCheckoutGrant,
     }),
     [
       hydrated,
@@ -210,6 +300,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       joinRewards,
       signOutMember,
       earnBeans,
+      armCheckoutGrant,
     ],
   );
 
@@ -226,8 +317,16 @@ export function cartCount(cart: CartLine[]) {
   return cart.reduce((n, l) => n + l.qty, 0);
 }
 
+export function lineUnitPrice(line: CartLine): number {
+  const product = getProduct(line.productId);
+  const variant = product?.variants?.find((v) => v.id === line.variantId);
+  if (variant) return variant.price;
+  if (product && product.defaultVariantId === line.variantId) return product.price;
+  return line.price;
+}
+
 export function cartSubtotal(cart: CartLine[]) {
-  return cart.reduce((n, l) => n + l.price * l.qty, 0);
+  return cart.reduce((n, l) => n + lineUnitPrice(l) * l.qty, 0);
 }
 
 export function firstName(name: string | null | undefined) {

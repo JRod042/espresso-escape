@@ -1,16 +1,20 @@
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { brand, colombia, formatPrice, gear, getProduct } from "../catalog";
+import { cartFingerprint } from "../checkout-grant.js";
 import { beansForSpend } from "../rewards";
 import { cartPermalink } from "../shopify";
-import { cartCount, cartSubtotal, useShop } from "../store";
+import { cartCount, cartSubtotal, lineUnitPrice, useShop } from "../store";
 import { colors, fonts } from "../theme";
 import { BrassButton, Kicker, ProductCard, Qty, StoreTitle, ui } from "./ui";
 
 export function BagScreen({ openProduct }: { openProduct: (id: string) => void }) {
-  const { cart, setCartQty, removeFromCart, flash, member, earnBeans } = useShop();
+  const { cart, setCartQty, removeFromCart, flash, member, armCheckoutGrant } = useShop();
   const count = cartCount(cart);
   const subtotal = cartSubtotal(cart);
-  const checkout = cartPermalink(cart.map((l) => ({ variantId: l.variantId, qty: l.qty })));
+  const checkout = cartPermalink(
+    cart.map((l) => ({ variantId: l.variantId, qty: l.qty })),
+    { discountCode: brand.promo },
+  );
   const mug = gear()[0];
   const hasCoffee = cart.some((l) => l.productId !== "cr-mug");
   const hasMug = cart.some((l) => l.productId === "cr-mug");
@@ -19,8 +23,10 @@ export function BagScreen({ openProduct }: { openProduct: (id: string) => void }
 
   const pay = () => {
     if (member && beans > 0) {
-      earnBeans(beans);
-      flash(`+${beans} beans · Hacienda Rewards`);
+      armCheckoutGrant(
+        cartFingerprint(cart.map((l) => ({ variantId: l.variantId, qty: l.qty }))),
+        beans,
+      );
     }
     void Linking.openURL(checkout);
   };
@@ -55,7 +61,7 @@ export function BagScreen({ openProduct }: { openProduct: (id: string) => void }
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={s.name}>{product?.name ?? line.productId}</Text>
                 <Text style={s.meta}>{line.variantTitle}</Text>
-                <Text style={s.linePrice}>{formatPrice(line.price * line.qty)}</Text>
+                <Text style={s.linePrice}>{formatPrice(lineUnitPrice(line) * line.qty)}</Text>
                 <View style={s.lineActions}>
                   <Qty
                     value={line.qty}

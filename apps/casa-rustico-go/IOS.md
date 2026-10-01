@@ -1,5 +1,7 @@
 # Casa Rustico Go — iOS / TestFlight
 
+**No Expo charge:** GitHub → Actions → **iOS direct to TestFlight**, app `casa-rustico-go`. Or, on a Mac, `npm run ios:direct`. That archives with Xcode and uploads with Apple’s Transporter. See [docs/IOS_GITHUB_BUILDS.md](../../docs/IOS_GITHUB_BUILDS.md). The EAS steps below still spend a cloud build credit ($2 iOS after the free monthly builds).
+
 Bundle ID: **`com.jrod042.casarusticogo`**  
 Expo: **`@jrod42/casa-rustico-go`**  
 Apple Team: **`FY5H9V76QL`**  

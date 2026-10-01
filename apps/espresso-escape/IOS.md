@@ -1,5 +1,7 @@
 # Espresso Escape — iOS / TestFlight
 
+**No Expo charge:** GitHub → Actions → **iOS direct to TestFlight**, app `espresso-escape`. Or, on a Mac, `npm run ios:direct`. That archives with Xcode and uploads with Apple’s Transporter. See [docs/IOS_GITHUB_BUILDS.md](../../docs/IOS_GITHUB_BUILDS.md). The EAS steps below still spend a cloud build credit ($2 iOS after the free monthly builds).
+
 iOS bundle ID: **`com.jrod042.espressoescape`**  
 ASC Apple ID: **`6809059605`** (Espresso Escape Runner)  
 Android package: **`com.jrod042.espressoescape`**  

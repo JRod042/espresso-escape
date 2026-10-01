@@ -323,6 +323,15 @@ export function formatPrice(n: number) {
   return n % 1 === 0 ? `$${n}` : `$${n.toFixed(2)}`;
 }
 
+/** Lowest variant, prefixed when the bag has more than one price. */
+export function priceLabel(product: Product): string {
+  const prices = (product.variants ?? []).map((v) => v.price);
+  if (!prices.length) return formatPrice(product.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return max - min > 0.001 ? `From ${formatPrice(min)}` : formatPrice(min);
+}
+
 export function coffees() {
   return products.filter((p) => p.category === "coffee");
 }
