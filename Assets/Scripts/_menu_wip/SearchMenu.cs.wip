@@ -1,0 +1,159 @@
+using System;
+using UnityEngine;
+using UnityEngine.UI;
+
+/// Polished level search/browse for 5 levels — filter by id, title, pack.
+public class SearchMenu : MonoBehaviour
+{
+    Font _font;
+    InputField _input;
+    Transform _listRoot;
+    Action<int> _onPick;
+    Action _onBack;
+    Text _meta;
+
+    public void Build(Transform parent, Font font, Action<int> onPick, Action onBack)
+    {
+        _font = font;
+        _onPick = onPick;
+        _onBack = onBack;
+
+        var title = MakeText(parent, "Search Levels", 44, new Vector2(0, 780));
+        title.color = new Color(0.93f, 0.88f, 0.74f);
+
+        // Search field
+        var fieldGo = new GameObject("Search Field");
+        fieldGo.transform.SetParent(parent, false);
+        var frt = fieldGo.AddComponent<RectTransform>();
+        frt.sizeDelta = new Vector2(860, 72);
+        frt.anchoredPosition = new Vector2(0, 680);
+        var fimg = fieldGo.AddComponent<Image>();
+        fimg.color = new Color(0.35f, 0.25f, 0.16f, 1f);
+        _input = fieldGo.AddComponent<InputField>();
+        var placeholder = MakeText(fieldGo.transform, "Search by number, pack, or name…", 26, Vector2.zero);
+        placeholder.color = new Color(1, 1, 1, 0.45f);
+        var text = MakeText(fieldGo.transform, "", 28, Vector2.zero);
+        text.color = Color.white;
+        text.supportRichText = false;
+        _input.textComponent = text;
+        _input.placeholder = placeholder;
+        _input.onValueChanged.AddListener(Refresh);
+
+        _meta = MakeText(parent, "", 22, new Vector2(0, 600));
+        _meta.color = new Color(0.85f, 0.78f, 0.65f);
+
+        // Scroll list
+        var scrollGo = new GameObject("Level List");
+        scrollGo.transform.SetParent(parent, false);
+        var srt = scrollGo.AddComponent<RectTransform>();
+        srt.sizeDelta = new Vector2(920, 1100);
+        srt.anchoredPosition = new Vector2(0, -40);
+        var scroll = scrollGo.AddComponent<ScrollRect>();
+        var viewport = new GameObject("Viewport");
+        viewport.transform.SetParent(scrollGo.transform, false);
+        var vrt = viewport.AddComponent<RectTransform>();
+        Stretch(vrt);
+        viewport.AddComponent<Image>().color = new Color(0, 0, 0, 0.15f);
+        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        var content = new GameObject("Content");
+        content.transform.SetParent(viewport.transform, false);
+        _listRoot = content.transform;
+        var crt = content.AddComponent<RectTransform>();
+        crt.anchorMin = new Vector2(0, 1);
+        crt.anchorMax = new Vector2(1, 1);
+        crt.pivot = new Vector2(0.5f, 1);
+        crt.sizeDelta = new Vector2(0, 2000);
+        var vlg = content.AddComponent<VerticalLayoutGroup>();
+        vlg.childAlignment = TextAnchor.UpperCenter;
+        vlg.spacing = 10;
+        vlg.padding = new RectOffset(12, 12, 12, 12);
+        vlg.childControlHeight = true;
+        vlg.childForceExpandHeight = false;
+        content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.viewport = vrt;
+        scroll.content = crt;
+        scroll.horizontal = false;
+
+        var back = new GameObject("Back");
+        back.transform.SetParent(parent, false);
+        var brt = back.AddComponent<RectTransform>();
+        brt.sizeDelta = new Vector2(360, 80);
+        brt.anchoredPosition = new Vector2(0, -820);
+        var bimg = back.AddComponent<Image>();
+        bimg.color = new Color(0.55f, 0.40f, 0.27f);
+        var bbtn = back.AddComponent<Button>();
+        bbtn.targetGraphic = bimg;
+        bbtn.onClick.AddListener(() => _onBack?.Invoke());
+        var bt = MakeText(back.transform, "Back", 32, Vector2.zero);
+        bt.color = Color.white;
+    }
+
+    public void Refresh(string query)
+    {
+        if (_listRoot == null) return;
+        for (int i = _listRoot.childCount - 1; i >= 0; i--)
+            Destroy(_listRoot.GetChild(i).gameObject);
+
+        LevelCatalog cat = null;
+        if (GameSession.I != null) cat = GameSession.I.catalog;
+        if (cat == null)
+        {
+            cat = ScriptableObject.CreateInstance<LevelCatalog>();
+            cat.RebuildAll();
+        }
+        var hits = cat.Search(query);
+        int unlocked = PlayerProgress.Unlocked;
+        _meta.text = string.IsNullOrEmpty(query)
+            ? $"{LevelCatalog.LevelCount} levels · unlocked through {unlocked}"
+            : $"{hits.Length} match(es) · unlocked through {unlocked}";
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var L = hits[i];
+            bool locked = L.id > unlocked;
+            var row = new GameObject($"L{L.id}");
+            row.transform.SetParent(_listRoot, false);
+            var le = row.AddComponent<LayoutElement>();
+            le.minHeight = 88;
+            le.preferredHeight = 88;
+            var img = row.AddComponent<Image>();
+            img.color = locked
+                ? new Color(0.25f, 0.18f, 0.12f, 0.9f)
+                : new Color(0.45f, 0.32f, 0.20f, 0.95f);
+            var btn = row.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.interactable = !locked;
+            int id = L.id;
+            btn.onClick.AddListener(() => _onPick?.Invoke(id));
+            var label = MakeText(row.transform,
+                locked ? $"🔒 {L.id}. {L.title}  ·  {L.pack}" : $"{L.id}. {L.title}  ·  {L.pack}",
+                26, Vector2.zero);
+            label.color = locked ? new Color(1, 1, 1, 0.4f) : new Color(0.96f, 0.92f, 0.82f);
+            Stretch(label.rectTransform);
+        }
+    }
+
+    Text MakeText(Transform parent, string s, int size, Vector2 pos)
+    {
+        var go = new GameObject("Text");
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(860, size + 16);
+        rt.anchoredPosition = pos;
+        var t = go.AddComponent<Text>();
+        t.text = s;
+        t.font = _font;
+        t.fontSize = size;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.color = Color.white;
+        return t;
+    }
+
+    static void Stretch(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
+}

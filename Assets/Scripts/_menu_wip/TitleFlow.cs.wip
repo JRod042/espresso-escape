@@ -1,0 +1,183 @@
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+
+/// Boot → Title → Startup Options / Search / Play. Real screens, not placeholders.
+public class TitleFlow : MonoBehaviour
+{
+    Canvas _canvas;
+    GameObject _title;
+    GameObject _options;
+    GameObject _search;
+    GameObject _hud;
+    SearchMenu _searchMenu;
+    Font _font;
+
+    void Start()
+    {
+        EnsureEventSystem();
+        _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (_font == null) _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        BuildChrome();
+        ShowTitle();
+        if (GameSession.I != null) GameSession.I.GoTitle();
+    }
+
+    void EnsureEventSystem()
+    {
+        if (FindFirstObjectByType<EventSystem>() == null)
+        {
+            var es = new GameObject("EventSystem");
+            es.AddComponent<EventSystem>();
+            es.AddComponent<StandaloneInputModule>();
+        }
+    }
+
+    void BuildChrome()
+    {
+        var root = new GameObject("UI Root");
+        root.transform.SetParent(transform, false);
+        _canvas = root.AddComponent<Canvas>();
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        var scaler = root.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080, 1920);
+        root.AddComponent<GraphicRaycaster>();
+
+        _title = Panel("Title Screen", root.transform);
+        Label(_title.transform, "ESPRESSO ESCAPE", 64, new Vector2(0, 280));
+        Label(_title.transform, "Casa Rústico", 28, new Vector2(0, 200));
+        Btn(_title.transform, "Play", new Vector2(0, 40), ShowOptions);
+        Btn(_title.transform, "Search Levels", new Vector2(0, -60), ShowSearch);
+        Btn(_title.transform, "Options", new Vector2(0, -160), ShowOptions);
+
+        _options = Panel("Startup Options", root.transform);
+        Label(_options.transform, "Startup Options", 48, new Vector2(0, 320));
+        Btn(_options.transform, "Continue", new Vector2(0, 120), () =>
+        {
+            HideAll();
+            if (GameSession.I != null) GameSession.I.Continue();
+            ShowHud();
+        });
+        Btn(_options.transform, "New Game", new Vector2(0, 20), () =>
+        {
+            HideAll();
+            if (GameSession.I != null) GameSession.I.NewGame();
+            ShowHud();
+        });
+        Btn(_options.transform, "Search Levels", new Vector2(0, -80), ShowSearch);
+        Btn(_options.transform, "Back", new Vector2(0, -200), ShowTitle);
+
+        _search = Panel("Search Menu", root.transform);
+        _searchMenu = _search.AddComponent<SearchMenu>();
+        _searchMenu.Build(_search.transform, _font, OnPickLevel, ShowOptions);
+
+        _hud = Panel("Play HUD", root.transform);
+        var hudBg = _hud.GetComponent<Image>();
+        if (hudBg != null) hudBg.color = new Color(0, 0, 0, 0);
+        Label(_hud.transform, "Tap to hop", 22, new Vector2(0, -780));
+        Btn(_hud.transform, "Menu", new Vector2(-400, 820), ShowTitle);
+    }
+
+    void OnPickLevel(int id)
+    {
+        HideAll();
+        if (GameSession.I != null) GameSession.I.PlayLevel(id);
+        ShowHud();
+    }
+
+    void HideAll()
+    {
+        _title.SetActive(false);
+        _options.SetActive(false);
+        _search.SetActive(false);
+        _hud.SetActive(false);
+    }
+
+    public void ShowTitle()
+    {
+        HideAll();
+        _title.SetActive(true);
+        if (GameSession.I != null) GameSession.I.GoTitle();
+    }
+
+    public void ShowOptions()
+    {
+        HideAll();
+        _options.SetActive(true);
+        if (GameSession.I != null) GameSession.I.GoOptions();
+    }
+
+    public void ShowSearch()
+    {
+        HideAll();
+        _search.SetActive(true);
+        if (_searchMenu != null) _searchMenu.Refresh("");
+        if (GameSession.I != null) GameSession.I.GoSearch();
+    }
+
+    void ShowHud()
+    {
+        HideAll();
+        _hud.SetActive(true);
+    }
+
+    GameObject Panel(string name, Transform parent)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        Stretch(rt);
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.22f, 0.14f, 0.09f, 0.92f); // kraft dark wash
+        go.SetActive(false);
+        return go;
+    }
+
+    void Label(Transform parent, string text, int size, Vector2 pos)
+    {
+        var go = new GameObject("Label");
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(900, size + 20);
+        rt.anchoredPosition = pos;
+        var t = go.AddComponent<Text>();
+        t.text = text;
+        t.font = _font;
+        t.fontSize = size;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.color = new Color(0.93f, 0.88f, 0.74f);
+    }
+
+    void Btn(Transform parent, string text, Vector2 pos, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject("Btn " + text);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(520, 88);
+        rt.anchoredPosition = pos;
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.55f, 0.40f, 0.27f, 1f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(onClick);
+        var label = new GameObject("Text");
+        label.transform.SetParent(go.transform, false);
+        var lrt = label.AddComponent<RectTransform>();
+        Stretch(lrt);
+        var t = label.AddComponent<Text>();
+        t.text = text;
+        t.font = _font;
+        t.fontSize = 34;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.color = Color.white;
+    }
+
+    static void Stretch(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
+}
