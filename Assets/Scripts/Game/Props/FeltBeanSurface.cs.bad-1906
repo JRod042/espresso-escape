@@ -1,0 +1,463 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+/// Wool read of the existing Imagine Bean.
+/// Call FeltBeanSurface.Apply on that root.
+/// DriveLook/grok/detail-bean-closer.png: fuzzy wool, a raised tan centre seam,
+/// large glossy bead eyes, and a soft outline.
+/// The body mesh stays on its MeshFilter. The capsule, mass, and BeanImpulse stay as authored.
+public static class FeltBeanSurface
+{
+    const string ShellName = "Fuzz Shell";
+
+    // Metres. The face nap stays under the raised seam (yarn centre is 0.014 off the surface).
+    const float BodyOutline = 0.034f;
+    const float BodyFace = 0.016f;
+    const float LimbOutline = 0.022f;
+    const float EyeDiameter = 0.162f;
+    const float SeamLift = 0.046f;
+    const float SeamThick = 0.032f;
+    const float SeamLength = 0.026f;
+
+    static readonly Color WoolBrown = new Color(1f, 1f, 1f);
+    static readonly Color SeamTan = new Color(0.80f, 0.66f, 0.44f);
+    static readonly Color EyeBlack = new Color(0.015f, 0.012f, 0.010f);
+    static readonly Color Catchlight = new Color(0.98f, 0.97f, 0.94f);
+
+    /// <summary>
+    /// Fuzzy wool, raised centre seam, and large glossy eyes on the existing Imagine Bean.
+    /// </summary>
+    public static void Apply(GameObject root)
+    {
+        if (root == null) return;
+        DressWool(root.transform);
+
+        Transform body = root.transform.Find("Bean Body");
+        var filter = body != null ? body.GetComponent<MeshFilter>() : null;
+        Mesh source = filter != null ? filter.sharedMesh : null;
+        if (body == null || source == null) return;
+
+        var verts = source.vertices;
+        var normals = source.normals;
+        if (normals == null || normals.Length != verts.Length)
+            normals = RadialNormals(verts);
+
+        RaiseSeam(root.transform, body, verts, normals);
+        EnlargeEyes(root.transform, body, verts, normals);
+    }
+
+    static void DressWool(Transform root)
+    {
+        var renderers = root.GetComponentsInChildren<MeshRenderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null || renderer.gameObject.name == ShellName) continue;
+            string name = renderer.gameObject.name;
+            if (name != "Bean Body" && name != "Arm" && name != "Foot") continue;
+
+            TuneWool(renderer);
+            bool body = name == "Bean Body";
+            AddShell(renderer.gameObject, body ? BodyOutline : LimbOutline, body ? BodyFace : LimbOutline, body);
+        }
+    }
+
+    static void TuneWool(MeshRenderer renderer)
+    {
+        var material = renderer.sharedMaterial;
+        if (material == null || (!material.HasProperty("_BumpScale") && !material.HasProperty("_BaseColor")))
+        {
+            renderer.sharedMaterial = WoolMaterial(material);
+            return;
+        }
+
+        // detail-bean-closer.png: matte fiber, soft rim, no dark trench where the raised seam sits.
+        SetFloat(material, "_BumpScale", 2.75f);
+        SetFloat(material, "_Sheen", 0.14f);
+        SetFloat(material, "_Wrap", 0.90f);
+        SetFloat(material, "_Smoothness", 0.02f);
+        SetFloat(material, "_Glossiness", 0.02f);
+        SetFloat(material, "_FiberAmt", 0.046f);
+        SetFloat(material, "_SeamAmt", 0f);
+    }
+
+    static void RaiseSeam(Transform root, Transform body, Vector3[] verts, Vector3[] normals)
+    {
+        var yarn = SeamMaterial();
+        var points = new List<Vector3>();
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform dash = root.GetChild(i);
+            if (dash.name != "Dash Stitch") continue;
+            var dashRenderer = dash.GetComponent<MeshRenderer>();
+            if (dashRenderer != null) dashRenderer.enabled = false;
+            if (OnSurface(body, verts, normals, dash.position, 0.010f, out Vector3 pos, out _))
+                points.Add(pos);
+        }
+        if (points.Count < 2) return;
+        points.Sort((a, b) => a.y.CompareTo(b.y));
+
+        Transform old = root.Find("Yarn Seam");
+        if (old != null)
+        {
+            if (Application.isPlaying) Object.Destroy(old.gameObject);
+            else Object.DestroyImmediate(old.gameObject);
+        }
+
+        var go = new GameObject("Yarn Seam");
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+        go.AddComponent<MeshFilter>().sharedMesh = SoftCord(points, root, 0.028f);
+        var renderer = go.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = yarn;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    }
+
+    /// One soft tan cord. The old dashes stay hidden so the seam is not a row of bumps.
+    static Mesh SoftCord(List<Vector3> world, Transform space, float radius)
+    {
+        const int sides = 8;
+        int count = world.Count;
+        int cols = sides + 1;
+        var v = new List<Vector3>(count * cols);
+        var uv = new List<Vector2>(count * cols);
+        var tris = new List<int>((count - 1) * sides * 6);
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 p = space.InverseTransformPoint(world[i]);
+            Vector3 prev = space.InverseTransformPoint(world[Mathf.Max(0, i - 1)]);
+            Vector3 next = space.InverseTransformPoint(world[Mathf.Min(count - 1, i + 1)]);
+            Vector3 tan = next - prev;
+            if (tan.sqrMagnitude < 1e-8f) tan = Vector3.up;
+            tan.Normalize();
+            Vector3 side = Vector3.Cross(tan, Vector3.forward);
+            if (side.sqrMagnitude < 1e-6f) side = Vector3.Cross(tan, Vector3.right);
+            side.Normalize();
+            Vector3 bin = Vector3.Cross(side, tan).normalized;
+            float rad = radius * (1f + 0.18f * Mathf.Sin(i * 1.3f));
+            for (int k = 0; k <= sides; k++)
+            {
+                float a = k / (float)sides * Mathf.PI * 2f;
+                v.Add(p + (side * Mathf.Cos(a) + bin * Mathf.Sin(a)) * rad);
+                uv.Add(new Vector2(k / (float)sides, i / (float)Mathf.Max(1, count - 1)));
+            }
+        }
+        for (int i = 0; i < count - 1; i++)
+        {
+            for (int k = 0; k < sides; k++)
+            {
+                int i0 = i * cols + k;
+                int i1 = i0 + 1;
+                int i2 = i0 + cols;
+                int i3 = i2 + 1;
+                tris.Add(i0); tris.Add(i2); tris.Add(i1);
+                tris.Add(i1); tris.Add(i2); tris.Add(i3);
+            }
+        }
+        var mesh = new Mesh { name = "Yarn Seam" };
+        mesh.SetVertices(v);
+        mesh.SetUVs(0, uv);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    static void EnlargeEyes(Transform root, Transform body, Vector3[] verts, Vector3[] normals)
+    {
+        var eyes = new List<Transform>();
+        var lights = new List<Transform>();
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (child.name == "Eye") eyes.Add(child);
+            else if (child.name == "Eye Highlight") lights.Add(child);
+        }
+
+        float radius = EyeDiameter * 0.5f;
+        float lift = radius * 0.84f;
+        for (int i = 0; i < eyes.Count; i++)
+        {
+            Transform eye = eyes[i];
+            if (!OnSurface(body, verts, normals, eye.position, lift, out Vector3 pos, out Vector3 normal))
+                continue;
+
+            eye.position = pos;
+            eye.localScale = Vector3.one * EyeDiameter;
+            GlossyBead(eye.GetComponent<MeshRenderer>(), EyeBlack, 0.98f, 88f);
+
+            if (i >= lights.Count) continue;
+            Transform hl = lights[i];
+            float side = eye.localPosition.x >= 0f ? 1f : -1f;
+            Vector3 view = normal
+                + root.TransformDirection(Vector3.up) * 0.42f
+                + root.TransformDirection(Vector3.left) * (side * 0.22f);
+            if (view.sqrMagnitude < 1e-8f) view = normal;
+            view.Normalize();
+            hl.position = pos + view * (radius * 0.82f);
+            hl.localScale = Vector3.one * (EyeDiameter * 0.18f);
+            GlossyBead(hl.GetComponent<MeshRenderer>(), Catchlight, 0.50f, 70f);
+        }
+    }
+
+    /// Puts a point back on the bean along its current direction, then lifts it on the outward normal.
+    /// Reads the body mesh. Does not write it.
+    static bool OnSurface(Transform body, Vector3[] verts, Vector3[] normals, Vector3 worldPoint, float lift, out Vector3 worldPos, out Vector3 worldNormal)
+    {
+        worldPos = worldPoint;
+        worldNormal = Vector3.forward;
+        Vector3 dir = body.InverseTransformPoint(worldPoint);
+        if (dir.sqrMagnitude < 1e-8f) return false;
+        dir.Normalize();
+
+        int best = -1;
+        float bestDot = -2f;
+        for (int i = 0; i < verts.Length; i++)
+        {
+            if (verts[i].sqrMagnitude < 1e-8f) continue;
+            float dot = Vector3.Dot(verts[i].normalized, dir);
+            if (dot <= bestDot) continue;
+            bestDot = dot;
+            best = i;
+        }
+        if (best < 0 || bestDot < 0.2f) return false;
+
+        float along = Vector3.Dot(verts[best], dir);
+        if (along < 0.02f) along = verts[best].magnitude;
+        Vector3 n = best < normals.Length && normals[best].sqrMagnitude > 1e-8f
+            ? normals[best].normalized
+            : verts[best].normalized;
+
+        worldPos = body.TransformPoint(dir * along + n * lift);
+        worldNormal = body.TransformDirection(n).normalized;
+        return true;
+    }
+
+    static Vector3[] RadialNormals(Vector3[] verts)
+    {
+        var normals = new Vector3[verts.Length];
+        for (int i = 0; i < verts.Length; i++)
+            normals[i] = verts[i].sqrMagnitude > 1e-8f ? verts[i].normalized : Vector3.forward;
+        return normals;
+    }
+
+    static void GlossyBead(MeshRenderer renderer, Color color, float gloss, float power)
+    {
+        if (renderer == null) return;
+        var material = renderer.sharedMaterial;
+        if (material == null) return;
+        if (material.HasProperty("_Color")) material.SetColor("_Color", color);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+        SetFloat(material, "_Gloss", gloss);
+        SetFloat(material, "_SpecPower", power);
+        SetFloat(material, "_Smoothness", gloss);
+        SetFloat(material, "_Glossiness", gloss);
+    }
+
+    static void AddShell(GameObject host, float outline, float faceHold, bool face)
+    {
+        var hostFilter = host.GetComponent<MeshFilter>();
+        var hostRenderer = host.GetComponent<MeshRenderer>();
+        if (hostFilter == null || hostFilter.sharedMesh == null || hostRenderer == null) return;
+
+        Mesh source = hostFilter.sharedMesh;
+        Transform child = host.transform.Find(ShellName);
+        GameObject shell;
+        if (child == null)
+        {
+            shell = new GameObject(ShellName);
+            shell.transform.SetParent(host.transform, false);
+            shell.layer = host.layer;
+            shell.AddComponent<MeshFilter>();
+            var created = shell.AddComponent<MeshRenderer>();
+            created.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            created.receiveShadows = true;
+        }
+        else shell = child.gameObject;
+
+        shell.transform.localPosition = Vector3.zero;
+        shell.transform.localRotation = Quaternion.identity;
+        shell.transform.localScale = Vector3.one;
+
+        var filter = shell.GetComponent<MeshFilter>();
+        if (filter == null) filter = shell.AddComponent<MeshFilter>();
+        Mesh previous = filter.sharedMesh;
+        Mesh nap = CopyNap(source, outline, faceHold, face);
+        filter.sharedMesh = nap;
+        if (previous != null && previous != source && previous != nap)
+        {
+            if (Application.isPlaying) Object.Destroy(previous);
+            else Object.DestroyImmediate(previous);
+        }
+
+        var renderer = shell.GetComponent<MeshRenderer>();
+        if (renderer == null) renderer = shell.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = WoolMaterial(hostRenderer.sharedMaterial);
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        renderer.receiveShadows = true;
+
+        var collider = shell.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Object.Destroy(collider);
+            else Object.DestroyImmediate(collider);
+        }
+    }
+
+    /// Displaced copy. The source mesh is only read.
+    static Mesh CopyNap(Mesh source, float outline, float faceHold, bool face)
+    {
+        var mesh = new Mesh { name = ShellName, indexFormat = source.indexFormat };
+        mesh.vertices = source.vertices;
+        mesh.normals = source.normals;
+        mesh.uv = source.uv;
+        mesh.tangents = source.tangents;
+        mesh.triangles = source.triangles;
+
+        var original = mesh.vertices;
+        var verts = (Vector3[])original.Clone();
+        var normals = mesh.normals;
+        if (normals == null || normals.Length != verts.Length)
+        {
+            mesh.RecalculateNormals();
+            normals = mesh.normals;
+        }
+
+        for (int i = 0; i < verts.Length; i++)
+        {
+            Vector3 n = normals[i];
+            if (n.sqrMagnitude < 1e-8f)
+                n = verts[i].sqrMagnitude > 1e-8f ? verts[i].normalized : Vector3.up;
+            else
+                n.Normalize();
+            verts[i] += n * Nap(original[i], n, outline, faceHold, face);
+        }
+
+        mesh.vertices = verts;
+        Weld(mesh, original, true);
+        mesh.RecalculateNormals();
+        Weld(mesh, original, false);
+        mesh.RecalculateBounds();
+        mesh.RecalculateTangents();
+        return mesh;
+    }
+
+    static float Nap(Vector3 position, Vector3 normal, float outline, float faceHold, bool face)
+    {
+        float cover = 0f;
+        if (face)
+        {
+            float t = Mathf.Clamp01(normal.z / 0.35f);
+            cover = t * t * (3f - 2f * t);
+        }
+        float nap = Mathf.Lerp(outline, faceHold, cover);
+        float clump = WoolClump(position) * (1f - cover * 0.35f) * outline * 0.9f;
+        return Mathf.Max(0.0022f, nap + clump);
+    }
+
+    static float WoolClump(Vector3 position)
+    {
+        Vector3 d = position.sqrMagnitude > 1e-8f ? position.normalized : Vector3.up;
+        float n = Mathf.Sin(Vector3.Dot(d, new Vector3(2.7f, 4.1f, 1.3f)) + 0.4f);
+        n += Mathf.Sin(Vector3.Dot(d, new Vector3(-3.4f, 1.8f, 4.6f)) + 1.7f) * 0.65f;
+        n += Mathf.Sin(Vector3.Dot(d, new Vector3(1.2f, -4.8f, 2.9f)) + 2.6f) * 0.4f;
+        return n / 2.05f;
+    }
+
+    static void Weld(Mesh mesh, Vector3[] original, bool positions)
+    {
+        var verts = mesh.vertices;
+        var normals = mesh.normals;
+        int countVerts = verts.Length;
+        var seen = new bool[countVerts];
+        var group = new int[countVerts];
+        for (int i = 0; i < countVerts; i++)
+        {
+            if (seen[i]) continue;
+            int count = 0;
+            group[count++] = i;
+            seen[i] = true;
+            for (int j = i + 1; j < countVerts; j++)
+            {
+                if (seen[j]) continue;
+                if ((original[i] - original[j]).sqrMagnitude > 1e-10f) continue;
+                seen[j] = true;
+                group[count++] = j;
+            }
+            if (count == 1) continue;
+
+            if (positions)
+            {
+                Vector3 sum = Vector3.zero;
+                for (int k = 0; k < count; k++) sum += verts[group[k]];
+                Vector3 avg = sum / count;
+                for (int k = 0; k < count; k++) verts[group[k]] = avg;
+            }
+            else
+            {
+                Vector3 sum = Vector3.zero;
+                for (int k = 0; k < count; k++) sum += normals[group[k]];
+                Vector3 avg = sum.sqrMagnitude > 1e-8f ? sum.normalized : Vector3.up;
+                for (int k = 0; k < count; k++) normals[group[k]] = avg;
+            }
+        }
+        if (positions) mesh.vertices = verts;
+        else mesh.normals = normals;
+    }
+
+    static Material WoolMaterial(Material source)
+    {
+        Color tint = EvenBrown(source);
+        Texture2D tex = null;
+        if (source != null)
+        {
+            if (source.HasProperty("_BaseMap")) tex = source.GetTexture("_BaseMap") as Texture2D;
+            if (tex == null && source.HasProperty("_MainTex")) tex = source.GetTexture("_MainTex") as Texture2D;
+        }
+        if (tex == null) tex = Resources.Load<Texture2D>("Look/tex-felt-brown");
+
+        Texture2D captured = tex;
+        Color capturedTint = tint;
+        return CraftMesh.Shared("bean-wool-nap", () =>
+        {
+            var material = CraftMesh.Felt(captured, capturedTint, new Vector2(1.8f, 1.8f), 2.8f, 0.16f, 0.90f, 0.98f, 0f);
+            SetFloat(material, "_FiberAmt", 0.046f);
+            SetFloat(material, "_SeamAmt", 0f);
+            return material;
+        });
+    }
+
+    static Material SeamMaterial()
+    {
+        return CraftMesh.Shared("bean-raised-seam", () =>
+        {
+            var material = CraftMesh.Felt(null, SeamTan, Vector2.one, 0.7f, 0.08f, 0.72f, 0.94f, 0f);
+            SetFloat(material, "_FiberAmt", 0.02f);
+            SetFloat(material, "_SeamAmt", 0f);
+            return material;
+        });
+    }
+
+    static Color EvenBrown(Material source)
+    {
+        Color color = WoolBrown;
+        if (source != null && source.HasProperty("_BaseColor")) color = source.GetColor("_BaseColor");
+        else if (source != null && source.HasProperty("_Color")) color = source.color;
+
+        color.a = 1f;
+        float peak = Mathf.Max(color.r, Mathf.Max(color.g, color.b));
+        if (peak < 0.2f || peak > 0.92f) return WoolBrown;
+        if (color.r > color.g + 0.14f && color.b > color.g + 0.02f) return WoolBrown;
+        color.r = Mathf.Clamp(color.r, 0f, 1f);
+        color.g = Mathf.Clamp(color.g, 0f, 1f);
+        color.b = Mathf.Clamp(color.b, 0f, 1f);
+        return color;
+    }
+
+    static void SetFloat(Material material, string property, float value)
+    {
+        if (material != null && material.HasProperty(property)) material.SetFloat(property, value);
+    }
+}

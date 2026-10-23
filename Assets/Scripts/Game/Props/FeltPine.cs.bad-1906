@@ -1,0 +1,416 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+/// One soft felt pine the scene can place with <see cref="Build"/>.
+/// DriveLook/grok/detail-trees-closer.png and DriveLook/imagine/285.jpg:
+/// three thick olive tiers, each wider than it is tall, a fuzzy edge,
+/// brown pompoms on the wool, and a ribbed trunk.
+public static class FeltPine
+{
+    // tex-yarn-green mean is about 122, 128, 70. White keeps that olive. Cutting blue turns the tiers yellow.
+    static readonly Color Olive = new Color(1f, 1f, 1f);
+    static readonly Color YarnTan = new Color(0.78f, 0.66f, 0.50f);
+    static readonly Color PomDark = new Color(0.52f, 0.40f, 0.30f);
+    static readonly Color PomMid = new Color(0.72f, 0.56f, 0.42f);
+
+    const float TrunkHeight = 0.72f;
+    const float FootR = 0.27f;
+    const float NeckR = 0.21f;
+    const int Ribs = 12;
+
+    // centerY, radius, halfHeight, z scale. Width is about twice the height.
+    // Each upper cushion sits down into the one below so the tree is not three hard discs.
+    static readonly Vector4[] Tiers =
+    {
+        new Vector4(0.70f, 0.64f, 0.32f, 0.92f),
+        new Vector4(0.96f, 0.48f, 0.26f, 0.90f),
+        new Vector4(1.18f, 0.34f, 0.18f, 0.90f)
+    };
+
+    // height up the crown (0 base .. 1 tip), unused, yaw, diameter. Yaw -pi/2 faces the camera.
+    static readonly Vector4[] Dots =
+    {
+        new Vector4(0.20f, 0f, -1.10f, 0.090f),
+        new Vector4(0.34f, 0f, -1.62f, 0.078f),
+        new Vector4(0.28f, 0f, -2.10f, 0.070f),
+        new Vector4(0.46f, 0f, -0.78f, 0.082f),
+        new Vector4(0.42f, 0f, -1.35f, 0.066f),
+        new Vector4(0.55f, 0f, -1.95f, 0.074f),
+        new Vector4(0.52f, 0f, -2.40f, 0.060f),
+        new Vector4(0.64f, 0f, -1.15f, 0.070f),
+        new Vector4(0.70f, 0f, -1.70f, 0.058f),
+        new Vector4(0.76f, 0f, -0.95f, 0.054f),
+        new Vector4(0.82f, 0f, -1.48f, 0.050f),
+        new Vector4(0.36f, 0f, -0.48f, 0.056f),
+        new Vector4(0.60f, 0f, -2.55f, 0.052f),
+        new Vector4(0.16f, 0f, -1.70f, 0.064f)
+    };
+
+    static Material _yarn, _trunk, _dark, _mid, _pale;
+    static Mesh[] _tierMesh;
+    static Mesh _bole;
+
+    /// Builds one pine under a root named Pine. Position is world space.
+    /// Scale 1 is about 1.52 tall with the trunk foot on y = 0.
+    /// <paramref name="green"/> and <paramref name="brown"/> are used only when
+    /// Escape/FeltFiber or the Look textures cannot be loaded.
+    public static GameObject Build(Vector3 position, float scale = 1f, Material green = null, Material brown = null)
+    {
+        var pine = new GameObject("Pine");
+        pine.transform.position = position;
+        pine.transform.localScale = Vector3.one * Mathf.Max(0.01f, scale);
+        pine.isStatic = true;
+        Transform host = pine.transform;
+
+        Material yarn = Yarn() ?? green;
+        Material bole = TrunkYarn() ?? brown;
+        Material dark = DarkPom() ?? brown;
+        Material mid = MidPom() ?? dark;
+
+        MeshBody(host, "Pine Trunk", Vector3.zero, TrunkMesh(), bole);
+        // 285.jpg and detail-trees-closer.png: one soft felt triangle, not three stacked discs.
+        MeshBody(host, "Pine Crown", new Vector3(0f, 0.58f, 0f), CrownMesh(), yarn);
+
+        for (int i = 0; i < Dots.Length; i++)
+        {
+            Vector4 d = Dots[i];
+            float t = Mathf.Clamp(d.x, 0.08f, 0.92f);
+            Vector3 p = OnCrown(t, d.z);
+            Vector3 n = CrownOut(t, d.z, p);
+            Material wool = (i % 3) == 0 ? dark : (i % 3) == 1 ? mid : PalePom() ?? mid;
+            Dot(host, wool, p - n * (d.w * 0.58f), d.w, i + 1);
+        }
+
+        return pine;
+    }
+
+    static float WoolNoise(float t, float phi)
+    {
+        float s = Mathf.Sin(phi);
+        float c = Mathf.Cos(phi);
+        float a = Mathf.PerlinNoise(0.5f + 0.42f * s + 0.15f * Mathf.Sin(2f * phi), 0.2f + t * 0.8f);
+        float b = Mathf.PerlinNoise(0.5f + 0.36f * c, 0.7f + t * 1.3f);
+        return (a * 0.65f + b * 0.35f - 0.5f) * 2f;
+    }
+
+    const float CrownH = 1.02f;
+    const float CrownBase = 0.62f;
+
+    /// Soft felt egg. t is 0 at the wide base and 1 at the tip.
+    /// A power taper (1-t)^n is the hard triangle from the 6:43 shot.
+    static float CrownR(float t, float phi)
+    {
+        float u = Mathf.Clamp01(t);
+        float egg = Mathf.Sqrt(Mathf.Max(0.02f, 1f - Mathf.Pow(u, 1.28f)));
+        float foot = Mathf.SmoothStep(0f, 0.16f, u);
+        egg *= Mathf.Lerp(0.86f, 1f, foot);
+        float n = WoolNoise(u * 1.7f, phi);
+        float lump = 0.07f * Mathf.Sin(phi * 2.5f + u * 4.2f) * Mathf.Sin(u * Mathf.PI);
+        float fuzz = 1f + 0.20f * n + lump;
+        return CrownBase * Mathf.Max(0.07f, egg) * fuzz;
+    }
+
+    static Vector3 OnCrown(float t, float phi)
+    {
+        t = Mathf.Clamp(t, 0.05f, 0.94f);
+        float r = CrownR(t, phi);
+        return new Vector3(Mathf.Cos(phi) * r, 0.58f + t * CrownH, Mathf.Sin(phi) * r * 0.92f);
+    }
+
+    static Vector3 CrownOut(float t, float phi, Vector3 p)
+    {
+        Vector3 a = OnCrown(Mathf.Min(0.96f, t + 0.04f), phi) - p;
+        Vector3 b = OnCrown(t, phi + 0.08f) - p;
+        Vector3 n = Vector3.Cross(b, a);
+        Vector3 flat = new Vector3(p.x, 0f, p.z);
+        if (n.sqrMagnitude < 1e-8f) n = flat.sqrMagnitude > 1e-8f ? flat : Vector3.up;
+        if (Vector3.Dot(n, flat) < 0f) n = -n;
+        return n.normalized;
+    }
+
+    static Mesh CrownMesh()
+    {
+        const int samples = 22;
+        const int seg = 40;
+        int cols = seg + 1;
+        var v = new List<Vector3>(samples * cols + 1);
+        var uv = new List<Vector2>(samples * cols + 1);
+        var tris = new List<int>(samples * seg * 6);
+        for (int k = 0; k < samples; k++)
+        {
+            float t = k / (float)(samples - 1);
+            for (int iu = 0; iu <= seg; iu++)
+            {
+                float a = iu / (float)seg;
+                float phi = a * Mathf.PI * 2f;
+                float r = CrownR(t, phi);
+                v.Add(new Vector3(Mathf.Cos(phi) * r, t * CrownH, Mathf.Sin(phi) * r * 0.92f));
+                uv.Add(new Vector2(a * 2f, t));
+            }
+        }
+        for (int k = 0; k < samples - 1; k++)
+            Strip(tris, k * cols, (k + 1) * cols, cols);
+        int tip = v.Count;
+        v.Add(new Vector3(0f, CrownH, 0f));
+        uv.Add(new Vector2(0.5f, 1f));
+        Fan(v, tris, tip, (samples - 1) * cols, seg, Vector3.up);
+        // Keep the wool lumps in the normals. A strong radial blend shades as a hard cone.
+        return Finish("Pine Crown", v, uv, tris, samples, cols, 0.22f);
+    }
+
+    /// yN is -1 at the bottom of the cushion and 1 at the top.
+    static float TierR(int tier, float yN, float phi)
+    {
+        float ax = Mathf.Abs(yN);
+        float roll = Mathf.SmoothStep(0.28f, 1f, ax);
+        float e = Mathf.Lerp(1f, 0.78f, roll * roll);
+        e *= Mathf.Sqrt(Mathf.Max(0.12f, 1f - Mathf.Pow(roll, 1.7f)));
+        float n = WoolNoise(tier * 0.37f + yN, phi + tier * 1.7f);
+        float fuzz = 1f + 0.30f * n * Mathf.Lerp(0.4f, 1f, roll);
+        return Tiers[tier].y * e * fuzz;
+    }
+
+    static Vector3 OnTier(int tier, float yN, float phi)
+    {
+        yN = Mathf.Clamp(yN, -0.92f, 0.92f);
+        float r = TierR(tier, yN, phi);
+        Vector4 s = Tiers[tier];
+        return new Vector3(Mathf.Cos(phi) * r, s.x + yN * s.z, Mathf.Sin(phi) * r * s.w);
+    }
+
+    static Vector3 Outward(int tier, float yN, float phi, Vector3 p)
+    {
+        Vector3 n = Vector3.Cross(
+            OnTier(tier, yN, phi + 0.06f) - p,
+            OnTier(tier, Mathf.Min(0.9f, yN + 0.05f), phi) - p);
+        Vector3 flat = new Vector3(p.x, 0f, p.z);
+        if (n.sqrMagnitude < 1e-8f) n = flat.sqrMagnitude > 1e-8f ? flat : Vector3.up;
+        if (Vector3.Dot(n, flat) < 0f) n = -n;
+        return n.normalized;
+    }
+
+    static float TrunkR(float y01, float phi)
+    {
+        float r = Mathf.Lerp(FootR, NeckR, Mathf.SmoothStep(0f, 1f, y01));
+        float flare = Mathf.Clamp01(1f - y01 / 0.22f);
+        r += 0.045f * flare * flare;
+        r += 0.060f * Mathf.Cos(Ribs * phi);
+        return r;
+    }
+
+    static Mesh TierMesh(int tier)
+    {
+        if (_tierMesh == null) _tierMesh = new Mesh[Tiers.Length];
+        if (_tierMesh[tier] != null) return _tierMesh[tier];
+        const int samples = 18;
+        const int seg = 40;
+        int cols = seg + 1;
+        float half = Tiers[tier].z;
+        float oval = Tiers[tier].w;
+        var v = new List<Vector3>(samples * cols + 2);
+        var uv = new List<Vector2>(samples * cols + 2);
+        var tris = new List<int>(samples * seg * 6);
+        for (int k = 0; k < samples; k++)
+        {
+            float yN = 1f - 2f * k / (float)(samples - 1);
+            for (int iu = 0; iu <= seg; iu++)
+            {
+                float a = iu / (float)seg;
+                float phi = a * Mathf.PI * 2f;
+                float r = Mathf.Max(0.004f, TierR(tier, yN, phi));
+                v.Add(new Vector3(Mathf.Cos(phi) * r, yN * half, Mathf.Sin(phi) * r * oval));
+                uv.Add(new Vector2(a, 0.5f + 0.5f * yN));
+            }
+        }
+        for (int k = 0; k < samples - 1; k++)
+            Strip(tris, k * cols, (k + 1) * cols, cols);
+        int top = v.Count;
+        v.Add(new Vector3(0f, half, 0f));
+        uv.Add(new Vector2(0.5f, 1f));
+        int bot = v.Count;
+        v.Add(new Vector3(0f, -half, 0f));
+        uv.Add(new Vector2(0.5f, 0f));
+        Fan(v, tris, top, 0, seg, Vector3.up);
+        Fan(v, tris, bot, (samples - 1) * cols, seg, Vector3.down);
+        _tierMesh[tier] = Finish("Pine Tier", v, uv, tris, samples, cols);
+        return _tierMesh[tier];
+    }
+
+    static Mesh TrunkMesh()
+    {
+        if (_bole != null) return _bole;
+        const int samples = 16;
+        const int seg = 42;
+        int cols = seg + 1;
+        var v = new List<Vector3>(samples * cols + 2);
+        var uv = new List<Vector2>(samples * cols + 2);
+        var tris = new List<int>(samples * seg * 6);
+        for (int k = 0; k < samples; k++)
+        {
+            float y01 = 1f - k / (float)(samples - 1);
+            for (int iu = 0; iu <= seg; iu++)
+            {
+                float a = iu / (float)seg;
+                float phi = a * Mathf.PI * 2f;
+                float r = TrunkR(y01, phi);
+                v.Add(new Vector3(Mathf.Cos(phi) * r, TrunkHeight * y01, Mathf.Sin(phi) * r));
+                uv.Add(new Vector2(a * 3f, y01 * 5f));
+            }
+        }
+        for (int k = 0; k < samples - 1; k++)
+            Strip(tris, k * cols, (k + 1) * cols, cols);
+        int top = v.Count;
+        v.Add(new Vector3(0f, TrunkHeight, 0f));
+        uv.Add(new Vector2(0.5f, 5f));
+        int foot = v.Count;
+        v.Add(Vector3.zero);
+        uv.Add(new Vector2(0.5f, 0f));
+        Fan(v, tris, top, 0, seg, Vector3.up);
+        Fan(v, tris, foot, (samples - 1) * cols, seg, Vector3.down);
+        _bole = Finish("Pine Trunk", v, uv, tris, samples, cols, 0.06f);
+        return _bole;
+    }
+
+    static Mesh Finish(string name, List<Vector3> v, List<Vector2> uv, List<int> tris, int samples, int cols, float soften = 0.28f)
+    {
+        var mesh = new Mesh { name = name };
+        mesh.SetVertices(v);
+        mesh.SetUVs(0, uv);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        var nrm = mesh.normals;
+        for (int row = 0; row < samples; row++)
+        {
+            int a = row * cols;
+            int b = a + cols - 1;
+            Vector3 avg = (nrm[a] + nrm[b]).normalized;
+            nrm[a] = avg;
+            nrm[b] = avg;
+        }
+        if (soften > 0.01f)
+        {
+            var verts = mesh.vertices;
+            Vector3 mid = mesh.bounds.center;
+            for (int i = 0; i < nrm.Length; i++)
+            {
+                Vector3 soft = verts[i] - mid;
+                soft.y *= 0.45f;
+                if (soft.sqrMagnitude > 1e-6f)
+                    nrm[i] = Vector3.Slerp(nrm[i], soft.normalized, soften).normalized;
+            }
+        }
+        mesh.normals = nrm;
+        mesh.RecalculateBounds();
+        mesh.RecalculateTangents();
+        return mesh;
+    }
+
+    static void Strip(List<int> t, int rowA, int rowB, int cols)
+    {
+        for (int iu = 0; iu < cols - 1; iu++)
+        {
+            int i0 = rowA + iu, i1 = i0 + 1, i2 = rowB + iu, i3 = i2 + 1;
+            t.Add(i0); t.Add(i1); t.Add(i2);
+            t.Add(i1); t.Add(i3); t.Add(i2);
+        }
+    }
+
+    static void Fan(List<Vector3> v, List<int> t, int center, int ring, int seg, Vector3 outward)
+    {
+        Vector3 n = Vector3.Cross(v[ring] - v[center], v[ring + 1] - v[center]);
+        bool wind = Vector3.Dot(n, outward) >= 0f;
+        for (int i = 0; i < seg; i++)
+        {
+            int a = ring + i, b = a + 1;
+            if (wind) { t.Add(center); t.Add(a); t.Add(b); }
+            else { t.Add(center); t.Add(b); t.Add(a); }
+        }
+    }
+
+    static void MeshBody(Transform host, string name, Vector3 localPos, Mesh mesh, Material mat)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(host, false);
+        go.transform.localPosition = localPos;
+        go.isStatic = true;
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var renderer = go.AddComponent<MeshRenderer>();
+        if (mat != null) renderer.sharedMaterial = mat;
+    }
+
+    static void Dot(Transform host, Material mat, Vector3 localPos, float diameter, int seed)
+    {
+        var go = new GameObject("Pompom");
+        go.transform.SetParent(host, false);
+        go.transform.localPosition = localPos;
+        go.isStatic = true;
+        go.AddComponent<MeshFilter>().sharedMesh = CraftMesh.Pompom(diameter * 0.5f, 0.16f, 12, 8, seed);
+        var renderer = go.AddComponent<MeshRenderer>();
+        if (mat != null) renderer.sharedMaterial = mat;
+    }
+
+    static Material Yarn()
+    {
+        if (_yarn != null) return _yarn;
+        // Matte olive from tex-yarn-green. Sheen stays low so the wool does not wash pale.
+        _yarn = Felt("Pine Yarn", "Look/tex-yarn-green", Olive, new Vector2(2.2f, 2.2f), 2.5f, 0.18f, 0.76f, 0.03f, 0.17f);
+        return _yarn;
+    }
+
+    static Material TrunkYarn()
+    {
+        if (_trunk != null) return _trunk;
+        _trunk = Felt("Pine Trunk Yarn", "Look/tex-yarn-fiber", YarnTan, new Vector2(2.5f, 6f), 1.7f, 0.10f, 0.64f, 0.04f, 0.12f);
+        return _trunk;
+    }
+
+    static Material DarkPom()
+    {
+        if (_dark != null) return _dark;
+        _dark = Felt("Pine Pompom", "Look/tex-felt-brown", PomDark, new Vector2(2f, 2f), 2.2f, 0.16f, 0.68f, 0.03f, 0.14f);
+        return _dark;
+    }
+
+    static Material MidPom()
+    {
+        if (_mid != null) return _mid;
+        _mid = Felt("Pine Pompom Mid", "Look/tex-felt-brown", PomMid, new Vector2(2f, 2f), 2.2f, 0.16f, 0.68f, 0.03f, 0.14f);
+        return _mid;
+    }
+
+    static Material PalePom()
+    {
+        if (_pale != null) return _pale;
+        _pale = Felt("Pine Pompom Pale", "Look/tex-yarn-green", new Color(0.96f, 0.93f, 0.74f), new Vector2(2f, 2f), 2.2f, 0.16f, 0.68f, 0.03f, 0.14f);
+        return _pale;
+    }
+
+    static Material Felt(string matName, string resource, Color tint, Vector2 tile, float bump, float sheen, float wrap, float smooth, float fiber)
+    {
+        var shader = Shader.Find("Escape/FeltFiber");
+        if (shader == null) return null;
+        var tex = Resources.Load<Texture2D>(resource);
+        if (tex == null) return null;
+        var mat = new Material(shader) { name = matName };
+        mat.enableInstancing = true;
+        if (mat.HasProperty("_BaseMap"))
+        {
+            mat.SetTexture("_BaseMap", tex);
+            mat.SetTextureScale("_BaseMap", tile);
+        }
+        var fuzz = Resources.Load<Texture2D>("Look/tex-felt-normal");
+        if (fuzz != null && mat.HasProperty("_BumpMap"))
+        {
+            mat.SetTexture("_BumpMap", fuzz);
+            mat.SetTextureScale("_BumpMap", tile);
+        }
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+        if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", bump);
+        if (mat.HasProperty("_Sheen")) mat.SetFloat("_Sheen", sheen);
+        if (mat.HasProperty("_Wrap")) mat.SetFloat("_Wrap", wrap);
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smooth);
+        if (mat.HasProperty("_FiberAmt")) mat.SetFloat("_FiberAmt", fiber);
+        if (mat.HasProperty("_SeamAmt")) mat.SetFloat("_SeamAmt", 0f);
+        return mat;
+    }
+}

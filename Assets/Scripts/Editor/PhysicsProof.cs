@@ -19,14 +19,14 @@ public static class PhysicsProof
         var impulse = bean.GetComponent<BeanImpulse>();
         Physics.gravity = new Vector3(0f, -22f, 0f);
         Time.fixedDeltaTime = 0.02f;
-        Physics.autoSimulation = false;
+        Physics.simulationMode = SimulationMode.Script;
 
         float a1 = Apex(bean, rb, impulse);
         float a2 = Apex(bean, rb, impulse);
         float delta = Mathf.Abs(a1 - a2);
         bool pass = a1 > 0.35f && delta < 0.1f;
         Debug.Log($"PHYSICS_PROOF apex1={a1:F3} apex2={a2:F3} delta={delta:F3} pass={pass}");
-        Physics.autoSimulation = true;
+        Physics.simulationMode = SimulationMode.FixedUpdate;
         EditorApplication.Exit(pass ? 0 : 3);
     }
 

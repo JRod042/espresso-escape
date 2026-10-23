@@ -26,7 +26,9 @@ public class LevelCatalog : ScriptableObject
 
     public static LevelDef Make(int id)
     {
-        // Five dense LOOK-craft stages — quality > quantity
+        // Five fixed LOOK-craft stages. obstacleDensity is menu metadata only —
+        // LevelSetSpawner does not lerp prop counts from it (L1–L3 are 1346 / 5220 / 5370).
+        // gravityScale stays 1 on every level so play gravity is −22 and airtime stays ~0.52 s.
         switch (Mathf.Clamp(id, 1, 5))
         {
             case 1:
@@ -40,29 +42,29 @@ public class LevelCatalog : ScriptableObject
                 return new LevelDef
                 {
                     id = 2, title = "Kraft Bridge", pack = "Bridge",
-                    blurb = "Arched corrugated bridge + yarn pines",
-                    goalZ = 22f, obstacleDensity = 0.50f, gravityScale = 1.02f, seed = 680902, bossBeat = false
+                    blurb = "Arched kraft bridge sitting on the burlap",
+                    goalZ = 22f, obstacleDensity = 0.50f, gravityScale = 1f, seed = 680902, bossBeat = false
                 };
             case 3:
                 return new LevelDef
                 {
                     id = 3, title = "Mill Path", pack = "Mill",
-                    blurb = "Cardboard grinder lane + flower canopy",
-                    goalZ = 28f, obstacleDensity = 0.62f, gravityScale = 1.05f, seed = 680903, bossBeat = false
+                    blurb = "Kraft steps and wider hops along the grinder lane",
+                    goalZ = 28f, obstacleDensity = 0.62f, gravityScale = 1f, seed = 680903, bossBeat = false
                 };
             case 4:
                 return new LevelDef
                 {
                     id = 4, title = "Night Roast", pack = "Roast",
-                    blurb = "Warm bounce light, denser yarn orbs",
-                    goalZ = 34f, obstacleDensity = 0.74f, gravityScale = 1.08f, seed = 680904, bossBeat = false
+                    blurb = "Elevated kraft blocks and a yarn cluster",
+                    goalZ = 34f, obstacleDensity = 0.74f, gravityScale = 1f, seed = 680904, bossBeat = false
                 };
             default:
                 return new LevelDef
                 {
                     id = 5, title = "Finale Escape", pack = "Finale",
-                    blurb = "Full LOOK set density — stranger should feel Imagine",
-                    goalZ = 42f, obstacleDensity = 0.88f, gravityScale = 1.10f, seed = 680905, bossBeat = true
+                    blurb = "Long set tour — yard, bridge, steps, yarn, goal",
+                    goalZ = 48f, obstacleDensity = 0.88f, gravityScale = 1f, seed = 680905, bossBeat = true
                 };
         }
     }

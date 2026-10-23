@@ -29,12 +29,14 @@ public class EscapeAudio : MonoBehaviour
         _amb.clip = _ambient;
         _amb.Play();
         BeanImpulse.OnHop += OnHop;
+        BeanController.OnJump += OnHop;
         LandFeel.OnLand += OnLand;
     }
 
     void OnDestroy()
     {
         BeanImpulse.OnHop -= OnHop;
+        BeanController.OnJump -= OnHop;
         LandFeel.OnLand -= OnLand;
         if (I == this) I = null;
     }

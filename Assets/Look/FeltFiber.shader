@@ -122,7 +122,8 @@ Shader "Escape/FeltFiber"
 
                 float4 shadowCoord = TransformWorldToShadowCoord(i.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
-                half shadow = lerp(1.0, mainLight.shadowAttenuation, 0.85); // felt never goes fully black in shadow
+                // library-bean-portrait-1.jpg: short soft contact, not a crushed black streak.
+                half shadow = lerp(1.0, mainLight.shadowAttenuation, 0.62);
 
                 float ndl = dot(N, mainLight.direction);
                 float wrap = _Wrap;
@@ -131,29 +132,27 @@ Shader "Escape/FeltFiber"
                 half3 ambient = SampleSH(N);
                 half3 lit = ambient + mainLight.color * diffuse * shadow;
 
-                // point lights (Bean Soft Key / Fill, values HELD) — wrapped like the key, no specular.
-                // The Built-in version of this shader had no ForwardAdd pass, so those intensities were never
-                // applied to felt; in URP forward they are, so the term is scaled to a soft fill, not a hot spot.
+                // Bean Soft Key intensity stays 2.956. 285.jpg has even wool light and no yellow pool on the floor,
+                // so this term stays a faint fill and does not spotlight upward faces or wash the contact shadow.
                 #ifdef _ADDITIONAL_LIGHTS
                 uint count = GetAdditionalLightsCount();
                 for (uint li = 0u; li < count; li++)
                 {
                     Light l = GetAdditionalLight(li, i.positionWS, half4(1,1,1,1));
                     float nl = saturate((dot(N, l.direction) + wrap * 0.5) / (1.0 + wrap * 0.5));
-                    lit += l.color * min(l.distanceAttenuation, 1.0) * l.shadowAttenuation * nl * 0.18;
+                    float atten = min(l.distanceAttenuation, 1.0);
+                    atten *= atten;
+                    float floorCut = lerp(1.0, 0.05, saturate(N.y));
+                    lit += l.color * atten * l.shadowAttenuation * shadow * nl * 0.035 * floorCut;
                 }
                 #endif
-                lit = max(lit, half3(0.22, 0.20, 0.18));
+                lit = max(lit, half3(0.20, 0.16, 0.12)); // keep the contact warm tan, not a black streak
                 c.rgb *= lit;
 
-                // fuzzy edge: felt catches light at grazing angles, no plastic highlight
+                // 285.jpg wool edge. _Sheen is the soft rim: high on pine/cloud/pom, low on burlap so the floor stays unchanged.
                 float ndv = saturate(dot(N, V));
-                float rim = pow(1.0 - ndv, 2.2) * (_Sheen * 0.9 + 0.04);
-                c.rgb += rim * half3(0.95, 0.90, 0.82) * (0.5 + 0.5 * shadow);
-                // tiny matte sheen toward the key
-                float3 H = normalize(mainLight.direction + V);
-                float spec = pow(saturate(dot(N, H)), 6.0) * _Smoothness * 0.25;
-                c.rgb += spec * mainLight.color * shadow;
+                float halo = pow(1.0 - ndv, 1.45) * saturate(_Sheen);
+                c.rgb *= 1.0 + halo * shadow;
                 c.rgb = MixFog(c.rgb, i.fogFactor);
                 c.a = 1.0;
                 return c;

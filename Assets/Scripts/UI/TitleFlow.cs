@@ -24,12 +24,18 @@ public class TitleFlow : MonoBehaviour
     Text _hudBeans;
     Text _clearTitle;
     Text _clearBody;
+    Button _nextLevelBtn;
+    RectTransform _hudLevelRt;
+    RectTransform _hudBeanRt;
+    RectTransform _menuRt;
+    RectTransform _progressRt;
     RectTransform _progressFill;
     LevelRunner _runner;
+    Image _mutePlate;
     string _infoReturn = "options"; // title | options
     const string PrefMute = "escape.mute";
-    static readonly Color Cream = new Color(0.93f, 0.88f, 0.74f);
-    static readonly Color KraftBtn = new Color(0.58f, 0.42f, 0.27f, 1f);
+    static readonly Color Cream = FeltUI.FeltCream;
+    static readonly Color KraftBtn = FeltUI.KraftTan;
 
     void Start()
     {
@@ -40,7 +46,7 @@ public class TitleFlow : MonoBehaviour
         BuildChrome();
         ShowTitle();
         if (GameSession.I != null) GameSession.I.GoTitle();
-        _runner = FindFirstObjectByType<LevelRunner>();
+        _runner = FindAnyObjectByType<LevelRunner>();
     }
 
     void OnEnable()
@@ -57,6 +63,10 @@ public class TitleFlow : MonoBehaviour
 
     CanvasScaler _scaler;
     bool _landscape;
+    RectTransform _safe;
+    Rect _safeSeen;
+    int _safeW, _safeH;
+    bool _dollyOn;
 
     // Side-scroller runs landscape: match height there so the stacked panels (Next / Replay / Title)
     // keep their portrait spacing instead of folding onto each other in a short canvas.
@@ -71,9 +81,20 @@ public class TitleFlow : MonoBehaviour
 
     void Update()
     {
+        if (!_dollyOn)
+        {
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                if (cam.GetComponent<TitleDolly>() == null) cam.gameObject.AddComponent<TitleDolly>();
+                _dollyOn = true;
+            }
+        }
+        if (_safe != null && (_safeW != Screen.width || _safeH != Screen.height || _safeSeen != Screen.safeArea))
+            ApplySafeAreaPad(_safe);
         if (_scaler != null && (Screen.width > Screen.height) != _landscape) FitScaler();
         if (_hud == null || !_hud.activeSelf) return;
-        if (_runner == null) _runner = FindFirstObjectByType<LevelRunner>();
+        if (_runner == null) _runner = FindAnyObjectByType<LevelRunner>();
         if (_progressFill != null && _runner != null)
         {
             var a = _progressFill.anchorMax;
@@ -84,7 +105,7 @@ public class TitleFlow : MonoBehaviour
 
     void OnBeansChanged(int got, int total)
     {
-        if (_hudBeans != null) _hudBeans.text = total > 0 ? $"Honey beans {got}/{total}" : "";
+        if (_hudBeans != null) _hudBeans.text = total > 0 ? $"{got} / {total}" : "";
     }
 
     void OnLevelClear(int id, int got, int total)
@@ -99,13 +120,23 @@ public class TitleFlow : MonoBehaviour
                 ? $"Honey beans {got}/{total}\n{(last ? "Every pack hopped. Casa Rústico thanks you." : $"Next: {LevelCatalog.Make(id + 1).title}")}"
                 : (last ? "Every pack hopped." : $"Next: {LevelCatalog.Make(id + 1).title}");
         _clear.SetActive(true);
-        var next = _clear.transform.Find("Btn Next level");
-        if (next != null) next.gameObject.SetActive(!last);
+        // Last level has nowhere to go, but Next stays on screen so the three plates cannot collapse onto each other.
+        if (_nextLevelBtn != null)
+        {
+            _nextLevelBtn.interactable = !last;
+            if (last)
+            {
+                var cb = _nextLevelBtn.colors;
+                cb.disabledColor = new Color(0.82f, 0.82f, 0.82f, 1f);
+                _nextLevelBtn.colors = cb;
+            }
+        }
+        Rebuild(_clear);
     }
 
     void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() == null)
+        if (FindAnyObjectByType<EventSystem>() == null)
         {
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
@@ -129,116 +160,102 @@ public class TitleFlow : MonoBehaviour
         var safeGo = new GameObject("SafeArea");
         safeGo.transform.SetParent(root.transform, false);
         var safeRt = safeGo.AddComponent<RectTransform>();
+        _safe = safeRt;
         ApplySafeAreaPad(safeRt);
         Transform chrome = safeGo.transform;
 
         _title = Panel("Title Screen", chrome);
-        // Title chrome is a translucent kraft wash so the felt diorama (stitched wall title) shows through — gen-5ee82b85
+        // Yarn ESPRESSO / ESCAPE / Casa Rústico is the 3D sign (FeltTitle). This screen adds no second title.
+        // Phone references keep the burlap open and put the controls on the floor. Plates, top to bottom:
+        // Continue / New game / Levels / Options.
         var titleBg = _title.GetComponent<Image>();
-        if (titleBg != null) titleBg.color = new Color(0.16f, 0.11f, 0.06f, 0.42f);
-        // LAND laneC-title-size-20260917: increase title label size for readable title chrome.
-        Label(_title.transform, "ESPRESSO ESCAPE", 66, new Vector2(0, 300));
-        // LAND laneC-subtitle-size-20260917: increase subtitle label size for readable title chrome.
-        Label(_title.transform, "Casa Rústico · handmade hop", 30, new Vector2(0, 220));
-        // LAND laneC-packsline-size-20260917: increase packs line font size for readable title chrome.
-        Label(_title.transform, "5 packs · Yard · Bridge · Mill · Night · Finale", 24, new Vector2(0, 160));
-        // Play ≠ Options: Continue-into-play (skip Startup Options)
-        Btn(_title.transform, "Play", new Vector2(0, 50), PlayNow);
-        Btn(_title.transform, "Search Levels", new Vector2(0, -55), ShowSearch);
-        Btn(_title.transform, "Options", new Vector2(0, -160), ShowOptions);
+        if (titleBg != null) { titleBg.color = new Color(0f, 0f, 0f, 0f); titleBg.raycastTarget = false; }
+        float step = FeltUI.ButtonHeight + FeltUI.Gap; // 68
+        BtnBottom(_title.transform, "Continue", 3f * step, PlayNow, FeltUI.PompomRed, Cream);
+        BtnBottom(_title.transform, "New game", 2f * step, () =>
+        {
+            EnterPlayFromMenu(() => { if (GameSession.I != null) GameSession.I.NewGame(); });
+        });
+        BtnBottom(_title.transform, "Levels", 1f * step, ShowSearch);
+        BtnBottom(_title.transform, "Options", 0f, ShowOptions, FeltUI.With(FeltUI.Burlap, 0.82f), FeltUI.DarkRoast);
 
         _options = Panel("Startup Options", chrome);
-        Label(_options.transform, "Startup Options", 48, new Vector2(0, 360));
-        // LAND laneC-version-font-20260917: increase version label font for readable title chrome.
-        Label(_options.transform, "v0.1 Unity WIP", 20, new Vector2(0, 320));
-        Label(_options.transform, "Continue keeps skip progress · New Game resets unlocks", 22, new Vector2(0, 285));
-        Btn(_options.transform, "Continue", new Vector2(0, 160), () =>
-        {
-            HideAll();
-            if (GameSession.I != null) GameSession.I.Continue();
-            ShowHud();
-        });
-        Btn(_options.transform, "New Game", new Vector2(0, 50), () =>
-        {
-            HideAll();
-            if (GameSession.I != null) GameSession.I.NewGame();
-            ShowHud();
-        });
-        // ASC stub: Mute only (AudioListener) — Sound lane owns SFX/Music assets
-        MuteBtn(_options.transform, new Vector2(0, -40));
-        // ASC stub item 10: Credits + Privacy + Age rating + Support overlays (no legal invent; rusticopr.com/privacy 404)
-        BtnBottom(_options.transform, "Credits", 710f, ShowCredits);
-        BtnBottom(_options.transform, "Privacy", 610f, ShowPrivacy);
-        BtnBottom(_options.transform, "Age rating", 510f, ShowAgeRating);
-        BtnBottom(_options.transform, "Support", 410f, ShowSupport);
-        BtnBottom(_options.transform, "How to play", 310f, ShowHowToPlay);
-        // LAND laneC-options-tip-clear-20260917: raise tips clear of the bottom-anchored buttons; held systems untouched.
-        // LAND laneC-opt-tip-font-20260917: increase only the hop-lane tip font 20→22; second tip remains unchanged.
-        Label(_options.transform, "Tap to hop the clear lane · weighted skip · handmade felt set", 22, new Vector2(0, -610));
-        // LAND laneC-opt-packs-tip-font-20260917: increase only the Packs tip font 18→20; held systems untouched.
-        Label(_options.transform, "Packs: All · Yard · Bridge · Mill · Night Roast→Roast · Finale", 20, new Vector2(0, -655));
-        BtnBottom(_options.transform, "Search Levels", 210f, ShowSearch);
-        // Responsive bottom-center Back button with hop-safe pad 110.
-        BtnBottom(_options.transform, "Back", 110f, ShowTitle);
+        // Bottom of the safe area, same floor as Back on the other screens. Continue / New game / Levels are not repeated here.
+        var optCol = FeltUI.Column(_options.transform, "Options Column", 520f, true);
+        StackLabel(optCol, "Options", 40, 56f);
+        MuteBtn(optCol, Vector2.zero);
+        StackBtn(optCol, "How to play", ShowHowToPlay, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(optCol, "Credits", ShowCredits, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(optCol, "Privacy", ShowPrivacy, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(optCol, "Age rating", ShowAgeRating, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(optCol, "Support", ShowSupport, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(optCol, "Back", ShowTitle, FeltUI.With(FeltUI.Burlap, 0.82f), FeltUI.DarkRoast);
 
         _search = Panel("Search Menu", chrome);
         _searchMenu = _search.AddComponent<SearchMenu>();
-        _searchMenu.Build(_search.transform, _font, OnPickLevel, ShowOptions);
+        _searchMenu.Build(_search.transform, _font, OnPickLevel, ShowTitle);
 
         _hud = Panel("Play HUD", chrome);
         var hudBg = _hud.GetComponent<Image>();
         if (hudBg != null) { hudBg.color = new Color(0, 0, 0, 0); hudBg.raycastTarget = false; }
-        // Responsive bottom anchor (not fixed Y=-780) — less clip on short canvas
-        // LAND laneC-taphop-pad-20260917: raise HUD prompt bottom pad for safe-area clearance.
-        // LAND laneC-taphop-font-20260917: increase HUD prompt font size for readability.
-        LabelBottom(_hud.transform, "Tap anywhere to hop", 24, 120f);
-        // level title + honey bean count, top-left under the safe area
-        _hudLevel = TopLabel(_hud.transform, "", 30, TextAnchor.MiddleLeft, new Vector2(60, -40));
-        _hudBeans = TopLabel(_hud.transform, "", 24, TextAnchor.MiddleLeft, new Vector2(60, -84));
-        // stitched progress bar to the goal, top-centre
+        // top-left: level title chip. Width is fitted in LayoutHud so it cannot meet the honey chip.
+        _hudLevel = Chip(_hud.transform, "Level Chip", new Vector2(0f, 1f), Vector2.zero, new Vector2(380, 48), "", 26, TextAnchor.MiddleLeft, 22f);
+        _hudLevelRt = _hudLevel.transform.parent as RectTransform;
+        // top-centre: honey-bean counter with a tiny egg icon (pickup colour)
+        var counter = Chip(_hud.transform, "Bean Chip", new Vector2(0.5f, 1f), Vector2.zero, new Vector2(190, 48), "", 26, TextAnchor.MiddleLeft, 62f);
+        _hudBeans = counter;
+        _hudBeanRt = counter.transform.parent as RectTransform;
+        var eggGo = new GameObject("Egg Icon");
+        eggGo.transform.SetParent(counter.transform.parent, false);
+        var eggRt = eggGo.AddComponent<RectTransform>();
+        FeltUI.Anchor(eggRt, new Vector2(0f, 0.5f), new Vector2(20f, 0f), new Vector2(24, 29));
+        var eggImg = eggGo.AddComponent<Image>();
+        eggImg.sprite = FeltUI.Egg(); eggImg.color = FeltUI.Honey; eggImg.raycastTarget = false; eggImg.preserveAspect = true;
+        // stitched progress bar to the goal, under the counter
         BuildProgressBar(_hud.transform);
-        // Menu opens Pause overlay (Resume + Title) — Title path preserved
-        var menuBtn = SmallBtn(_hud.transform, "Menu", new Vector2(-70, -60), ShowPause);
-        menuBtn.anchorMin = new Vector2(1f, 1f); menuBtn.anchorMax = new Vector2(1f, 1f); menuBtn.pivot = new Vector2(1f, 1f);
+        // top-right: Menu opens Pause overlay (Resume + Title) — Title path preserved
+        _menuRt = SmallBtn(_hud.transform, "Menu", Vector2.zero, ShowPause);
 
-        // Level Clear overlay — unlock feedback + Next / Title
+        // Level Clear — one bottom column so Next / Replay / Title each keep their own plate.
         _clear = Panel("Level Clear", chrome);
         var clearBg = _clear.GetComponent<Image>();
         if (clearBg != null) clearBg.color = new Color(0.10f, 0.07f, 0.04f, 0.80f);
-        _clearTitle = MakeLabel(_clear.transform, "Cleared", 56, new Vector2(0, 220));
-        _clearBody = BodyLabel(_clear.transform, "", 28, new Vector2(0, 80), new Vector2(860, 200));
-        Btn(_clear.transform, "Next level", new Vector2(0, -80), () =>
+        var clearCol = FeltUI.Column(_clear.transform, "Clear Column", 520f, true);
+        _clearTitle = StackLabel(clearCol, "Cleared", 36, 52f);
+        _clearBody = StackBody(clearCol, "", 22, 84f);
+        _nextLevelBtn = StackBtn(clearCol, "Next", () =>
         {
             EnterPlayFromMenu(() => { if (GameSession.I != null) GameSession.I.NextLevel(); });
-        });
-        Btn(_clear.transform, "Replay", new Vector2(0, -185), () =>
+        }, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(clearCol, "Replay", () =>
         {
             EnterPlayFromMenu(() => { if (GameSession.I != null) GameSession.I.PlayLevel(GameSession.I.currentLevelId); });
-        });
-        BtnBottom(_clear.transform, "Title", 110f, ShowTitle);
+        }, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(clearCol, "Title", ShowTitle, FeltUI.With(FeltUI.Burlap, 0.82f), FeltUI.DarkRoast);
 
         _pause = Panel("Pause Overlay", chrome);
         var pauseBg = _pause.GetComponent<Image>();
         if (pauseBg != null) pauseBg.color = new Color(0.10f, 0.07f, 0.04f, 0.88f);
-        // LAND laneC-paused-size-20260917: increase pause label size for readable pause state.
-        Label(_pause.transform, "Paused", 56, new Vector2(0, 180));
-        Btn(_pause.transform, "Resume", new Vector2(0, 40), ResumeFromPause);
-        BtnBottom(_pause.transform, "Title", 110f, TitleFromPause);
+        var pauseCol = FeltUI.Column(_pause.transform, "Pause Column", 520f, false);
+        StackLabel(pauseCol, "Paused", 48, 64f);
+        StackBtn(pauseCol, "Resume", ResumeFromPause, FeltUI.With(KraftBtn, 0.92f), Cream);
+        StackBtn(pauseCol, "Title", TitleFromPause, FeltUI.With(FeltUI.Burlap, 0.82f), FeltUI.DarkRoast);
 
-        // ASC stub: simple Credits/Privacy/Age rating/Support/How to play overlay (instant show/hide; no fade/SFX/TMP)
+        // Credits / Privacy / Age rating / Support / How to play. Close sits under the body, not on it.
         _info = Panel("Info Overlay", chrome);
         var infoBg = _info.GetComponent<Image>();
         if (infoBg != null) infoBg.color = new Color(0.10f, 0.07f, 0.04f, 0.94f);
-        // LAND laneC-info-title-font-20260917: increase Info overlay title readability.
-        _infoTitle = MakeLabel(_info.transform, "Info", 50, new Vector2(0, 360));
-        _infoBody = BodyLabel(_info.transform, "", 28, new Vector2(0, 40), new Vector2(860, 420));
-        BtnBottom(_info.transform, "Close", 110f, CloseInfo);
+        var infoCol = FeltUI.Column(_info.transform, "Info Column", 640f, false);
+        _infoTitle = StackLabel(infoCol, "Info", 40, 56f);
+        _infoBody = StackBody(infoCol, "", 26, 300f);
+        StackBtn(infoCol, "Close", CloseInfo, FeltUI.With(FeltUI.Burlap, 0.82f), FeltUI.DarkRoast);
 
         // ASC stub item 9: brief Loading… when Title/Search → Play (instant; no fade/spinner/TMP) [land: laneC-loading-size-20260917]
         _loading = Panel("Loading Overlay", chrome);
         var loadBg = _loading.GetComponent<Image>();
         if (loadBg != null) loadBg.color = new Color(0.10f, 0.07f, 0.04f, 0.94f);
         Label(_loading.transform, "Loading…", 52, Vector2.zero);
+        LayoutHud(ContentWidth());
     }
 
     void PlayNow()
@@ -254,6 +271,7 @@ public class TitleFlow : MonoBehaviour
         if (_pause == null) { ShowTitle(); return; }
         Time.timeScale = 0f;
         _pause.SetActive(true);
+        Rebuild(_pause);
         // keep HUD under overlay so Resume returns to play chrome
         if (_hud != null) _hud.SetActive(true);
         if (_title != null) _title.SetActive(false);
@@ -324,6 +342,7 @@ public class TitleFlow : MonoBehaviour
     {
         HideAll();
         _options.SetActive(true);
+        Rebuild(_options);
         if (GameSession.I != null) GameSession.I.GoOptions();
     }
 
@@ -331,7 +350,8 @@ public class TitleFlow : MonoBehaviour
     {
         HideAll();
         _search.SetActive(true);
-        if (_searchMenu != null) _searchMenu.Refresh("");
+        if (_searchMenu != null) _searchMenu.Refresh();
+        Rebuild(_search);
         if (GameSession.I != null) GameSession.I.GoSearch();
     }
 
@@ -348,24 +368,102 @@ public class TitleFlow : MonoBehaviour
         if (_progressFill != null) { var a = _progressFill.anchorMax; a.x = 0f; _progressFill.anchorMax = a; }
     }
 
-    Text TopLabel(Transform parent, string text, int size, TextAnchor align, Vector2 pos)
+    /// Rounded translucent dark-roast chip anchored to a HUD corner/edge, with a cream label (never a raycast target).
+    Text Chip(Transform parent, string name, Vector2 anchor, Vector2 offset, Vector2 size, string text, int fontSize, TextAnchor align, float padLeft)
     {
-        var go = new GameObject("Label");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 1f);
-        rt.anchorMax = new Vector2(0f, 1f);
-        rt.pivot = new Vector2(0f, 1f);
-        rt.sizeDelta = new Vector2(700, size + 16);
-        rt.anchoredPosition = pos;
-        var t = go.AddComponent<Text>();
-        t.text = text;
-        t.font = _font;
-        t.fontSize = size;
-        t.alignment = align;
-        t.color = Cream;
-        t.raycastTarget = false;
+        var plate = FeltUI.PlateImage(parent, name, FeltUI.With(FeltUI.DarkRoast, 0.58f), false);
+        FeltUI.Anchor(plate.rectTransform, anchor, offset, size);
+        var t = FeltUI.Label(plate.transform, text, _font, fontSize, Cream, align);
+        t.horizontalOverflow = HorizontalWrapMode.Wrap;
+        t.verticalOverflow = VerticalWrapMode.Truncate;
+        t.rectTransform.offsetMin = new Vector2(padLeft, 0f);
+        t.rectTransform.offsetMax = new Vector2(-18f, 0f);
         return t;
+    }
+
+    // Top row: level chip | honey count | Menu, with the progress stitch under the honey chip.
+    // Widths shrink so a landscape notch cannot push one plate onto another.
+    void LayoutHud(float w)
+    {
+        if (_hudLevelRt == null || w < 1f) return;
+        float gap = 16f;
+        float menuW = 168f;
+        float honeyW = 188f;
+        float levelW = w * 0.5f - honeyW * 0.5f - gap;
+        levelW = Mathf.Clamp(levelW, 120f, 420f);
+        float honeyRightGap = w * 0.5f - honeyW * 0.5f - menuW;
+        if (levelW + honeyW + menuW + gap * 2f > w || honeyRightGap < gap)
+        {
+            float budget = Mathf.Max(300f, w - gap * 2f);
+            menuW = Mathf.Clamp(budget * 0.26f, 120f, 168f);
+            honeyW = Mathf.Clamp(budget * 0.30f, 140f, 188f);
+            levelW = Mathf.Max(120f, budget - menuW - honeyW);
+        }
+        FeltUI.Anchor(_hudLevelRt, new Vector2(0f, 1f), Vector2.zero, new Vector2(levelW, 48f));
+        if (_hudBeanRt != null)
+            FeltUI.Anchor(_hudBeanRt, new Vector2(0.5f, 1f), Vector2.zero, new Vector2(honeyW, 48f));
+        if (_menuRt != null)
+            FeltUI.Anchor(_menuRt, new Vector2(1f, 1f), Vector2.zero, new Vector2(menuW, FeltUI.ButtonHeight));
+        if (_progressRt != null)
+        {
+            float barW = Mathf.Min(480f, Mathf.Max(120f, w - 2f * (menuW + gap)));
+            _progressRt.anchorMin = new Vector2(0.5f, 1f);
+            _progressRt.anchorMax = new Vector2(0.5f, 1f);
+            _progressRt.pivot = new Vector2(0.5f, 1f);
+            _progressRt.sizeDelta = new Vector2(barW, 14f);
+            _progressRt.anchoredPosition = new Vector2(0f, -72f);
+        }
+    }
+
+    float ContentWidth()
+    {
+        CanvasUnits(out float cw, out _);
+        float sw = Mathf.Max(1f, Screen.width);
+        Rect sa = Screen.safeArea;
+        if (sa.width < 1f) sa = new Rect(0f, 0f, sw, Mathf.Max(1f, Screen.height));
+        return Mathf.Max(320f, cw * (sa.width / sw) - FeltUI.SafeMargin * 2f);
+    }
+
+    static void CanvasUnits(out float w, out float h)
+    {
+        float sw = Mathf.Max(1f, Screen.width);
+        float sh = Mathf.Max(1f, Screen.height);
+        if (sw > sh) { h = 1080f; w = 1080f * sw / sh; }
+        else { w = 1080f; h = 1080f * sh / sw; }
+    }
+
+    static void Rebuild(GameObject go)
+    {
+        if (go == null || !go.activeInHierarchy) return;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(go.transform as RectTransform);
+    }
+
+    Text StackLabel(Transform parent, string text, int size, float height)
+    {
+        var t = MakeLabel(parent, text, size, Vector2.zero);
+        var le = t.gameObject.AddComponent<LayoutElement>();
+        le.preferredHeight = height;
+        le.minHeight = height;
+        le.flexibleWidth = 1f;
+        t.horizontalOverflow = HorizontalWrapMode.Wrap;
+        t.verticalOverflow = VerticalWrapMode.Truncate;
+        return t;
+    }
+
+    Text StackBody(Transform parent, string text, int size, float height)
+    {
+        var t = BodyLabel(parent, text, size, Vector2.zero, new Vector2(680f, height));
+        var le = t.gameObject.AddComponent<LayoutElement>();
+        le.preferredHeight = height;
+        le.minHeight = height;
+        le.flexibleWidth = 1f;
+        t.verticalOverflow = VerticalWrapMode.Truncate;
+        return t;
+    }
+
+    Button StackBtn(Transform parent, string text, UnityEngine.Events.UnityAction onClick, Color plate, Color textColor)
+    {
+        return FeltUI.Button(parent, text, _font, plate, textColor, onClick, 480f, FeltUI.ButtonHeight, 28);
     }
 
     void BuildProgressBar(Transform parent)
@@ -377,9 +475,10 @@ public class TitleFlow : MonoBehaviour
         trt.anchorMax = new Vector2(0.5f, 1f);
         trt.pivot = new Vector2(0.5f, 1f);
         trt.sizeDelta = new Vector2(520, 14);
-        trt.anchoredPosition = new Vector2(0, -150);
+        trt.anchoredPosition = new Vector2(0, -72); // under the top chips, clear of the Menu plate
         var timg = track.AddComponent<Image>();
-        timg.color = new Color(0.30f, 0.22f, 0.14f, 0.75f);
+        timg.sprite = FeltUI.Plate(); timg.type = Image.Type.Sliced; timg.pixelsPerUnitMultiplier = 3f;
+        timg.color = FeltUI.With(FeltUI.DarkRoast, 0.60f);
         timg.raycastTarget = false;
         var fill = new GameObject("Progress Fill");
         fill.transform.SetParent(track.transform, false);
@@ -391,6 +490,7 @@ public class TitleFlow : MonoBehaviour
         var fimg = fill.AddComponent<Image>();
         fimg.color = Cream;
         fimg.raycastTarget = false;
+        _progressRt = trt;
         // goal bead at the end of the stitch
         var bead = new GameObject("Goal Bead");
         bead.transform.SetParent(track.transform, false);
@@ -404,29 +504,12 @@ public class TitleFlow : MonoBehaviour
         bimg.raycastTarget = false;
     }
 
+    // Compact HUD button (Menu): same 56-px felt plate, narrower.
     RectTransform SmallBtn(Transform parent, string text, Vector2 pos, UnityEngine.Events.UnityAction onClick)
     {
-        var go = new GameObject("Btn " + text);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(220, 76);
+        var btn = FeltUI.Button(parent, text, _font, FeltUI.With(KraftBtn, 0.90f), Cream, onClick, 170f, FeltUI.ButtonHeight, 26);
+        var rt = (RectTransform)btn.transform;
         rt.anchoredPosition = pos;
-        var img = go.AddComponent<Image>();
-        img.color = new Color(KraftBtn.r, KraftBtn.g, KraftBtn.b, 0.92f);
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        btn.onClick.AddListener(() => EscapeAudio.Play(EscapeAudio.Sfx.Tap, 0.6f));
-        var label = new GameObject("Text");
-        label.transform.SetParent(go.transform, false);
-        var lrt = label.AddComponent<RectTransform>();
-        Stretch(lrt);
-        var t = label.AddComponent<Text>();
-        t.text = text;
-        t.font = _font;
-        t.fontSize = 30;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.color = Color.white;
         return rt;
     }
 
@@ -464,67 +547,42 @@ public class TitleFlow : MonoBehaviour
         return t;
     }
 
-    // Bottom-center responsive label — survives short/tall aspect without densify
-    void LabelBottom(Transform parent, string text, int size, float bottomPad)
-    {
-        var go = new GameObject("Label");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(900, size + 20);
-        rt.anchorMin = new Vector2(0.5f, 0f);
-        rt.anchorMax = new Vector2(0.5f, 0f);
-        rt.pivot = new Vector2(0.5f, 0f);
-        rt.anchoredPosition = new Vector2(0f, bottomPad);
-        var t = go.AddComponent<Text>();
-        t.text = text;
-        t.font = _font;
-        t.fontSize = size;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.color = new Color(0.93f, 0.88f, 0.74f);
-        t.raycastTarget = false;
-    }
-
-    // Bottom-center responsive button — keeps the hit target inside short canvases.
+    // Bottom-center responsive button (56-px rounded felt plate) — bottomPad is measured from the 24-px safe margin.
     void BtnBottom(Transform parent, string text, float bottomPad, UnityEngine.Events.UnityAction onClick)
     {
-        var go = new GameObject("Btn " + text);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(540, 92);
+        BtnBottom(parent, text, bottomPad, onClick, FeltUI.With(KraftBtn, 0.92f), Cream);
+    }
+
+    void BtnBottom(Transform parent, string text, float bottomPad, UnityEngine.Events.UnityAction onClick, Color plate, Color textColor)
+    {
+        var btn = FeltUI.Button(parent, text, _font, plate, textColor, onClick);
+        var rt = (RectTransform)btn.transform;
         rt.anchorMin = new Vector2(0.5f, 0f);
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
         rt.anchoredPosition = new Vector2(0f, bottomPad);
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.58f, 0.42f, 0.27f, 1f); // p9 kraft button
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var label = new GameObject("Text");
-        label.transform.SetParent(go.transform, false);
-        var lrt = label.AddComponent<RectTransform>();
-        Stretch(lrt);
-        var t = label.AddComponent<Text>();
-        t.text = text;
-        t.font = _font;
-        t.fontSize = 34;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.color = Color.white;
     }
 
-    static void ApplySafeAreaPad(RectTransform rt)
+    // Safe area (notch / home indicator, including landscape side insets) plus a 24-px margin, in canvas units.
+    void ApplySafeAreaPad(RectTransform rt)
     {
         Rect sa = Screen.safeArea;
         float w = Mathf.Max(1f, Screen.width);
         float h = Mathf.Max(1f, Screen.height);
+        if (sa.width < 1f || sa.height < 1f) sa = new Rect(0f, 0f, w, h);
         Vector2 amin = new Vector2(sa.xMin / w, sa.yMin / h);
         Vector2 amax = new Vector2(sa.xMax / w, sa.yMax / h);
         amin = Vector2.Max(Vector2.zero, Vector2.Min(amin, Vector2.one));
         amax = Vector2.Max(amin, Vector2.Min(amax, Vector2.one));
         rt.anchorMin = amin;
         rt.anchorMax = amax;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
+        rt.offsetMin = new Vector2(FeltUI.SafeMargin, FeltUI.SafeMargin);
+        rt.offsetMax = new Vector2(-FeltUI.SafeMargin, -FeltUI.SafeMargin);
+        _safeSeen = sa;
+        _safeW = Screen.width;
+        _safeH = Screen.height;
+        CanvasUnits(out float cw, out _);
+        LayoutHud(Mathf.Max(320f, cw * (amax.x - amin.x) - FeltUI.SafeMargin * 2f));
     }
 
     void ShowCredits()
@@ -567,7 +625,7 @@ public class TitleFlow : MonoBehaviour
         _infoReturn = "options";
         OpenInfo(
             "How to play",
-            "Tap anywhere to hop. Every hop is the same weighted skip.\nRide the burlap lane and the kraft bridge to the gold goal.\nCollect the honey beans floating in your hop arc.");
+            "Hold to run. The right half runs forward, the left half walks back.\nTap or swipe up to jump. Release early for a shorter hop.\nKeyboard: A / D or arrows to move, Space to jump.\nCross to the goal and collect the honey beans.");
     }
 
     void OpenInfo(string title, string body)
@@ -582,6 +640,7 @@ public class TitleFlow : MonoBehaviour
         if (_infoTitle != null) _infoTitle.text = title;
         if (_infoBody != null) _infoBody.text = body;
         _info.SetActive(true);
+        Rebuild(_info);
     }
 
     void CloseInfo()
@@ -605,13 +664,14 @@ public class TitleFlow : MonoBehaviour
         t.alignment = TextAnchor.MiddleCenter;
         t.color = new Color(0.93f, 0.88f, 0.74f);
         t.horizontalOverflow = HorizontalWrapMode.Wrap;
-        t.verticalOverflow = VerticalWrapMode.Overflow;
+        t.verticalOverflow = VerticalWrapMode.Truncate;
+        t.raycastTarget = false;
         return t;
     }
 
     static bool IsMuted() => PlayerPrefs.GetInt(PrefMute, 0) != 0;
 
-    static string MuteLabel(bool muted) => muted ? "Mute: On" : "Mute: Off";
+    static string MuteLabel() => "Mute";
 
     static void ApplyMute(bool muted)
     {
@@ -624,56 +684,27 @@ public class TitleFlow : MonoBehaviour
         PlayerPrefs.SetInt(PrefMute, muted ? 1 : 0);
         PlayerPrefs.Save();
         ApplyMute(muted);
-        if (_muteBtnLabel != null) _muteBtnLabel.text = MuteLabel(muted);
+        SyncMutePlate();
     }
 
     void MuteBtn(Transform parent, Vector2 pos)
     {
-        var go = new GameObject("Btn Mute");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(540, 92);
-        rt.anchoredPosition = pos;
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.58f, 0.42f, 0.27f, 1f); // p9 kraft button
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(ToggleMute);
-        var label = new GameObject("Text");
-        label.transform.SetParent(go.transform, false);
-        var lrt = label.AddComponent<RectTransform>();
-        Stretch(lrt);
-        var t = label.AddComponent<Text>();
-        t.text = MuteLabel(IsMuted());
-        t.font = _font;
-        t.fontSize = 34;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.color = Color.white;
-        _muteBtnLabel = t;
+        var btn = FeltUI.Button(parent, "Mute", _font, FeltUI.With(FeltUI.Olive, 0.92f), Cream, ToggleMute);
+        btn.name = "Btn Mute";
+        ((RectTransform)btn.transform).anchoredPosition = pos;
+        _mutePlate = btn.GetComponent<Image>();
+        _muteBtnLabel = btn.GetComponentInChildren<Text>();
+        SyncMutePlate();
     }
 
-    void Btn(Transform parent, string text, Vector2 pos, UnityEngine.Events.UnityAction onClick)
+    // The options row is the word Mute. Olive while sound is on, dark roast while it is muted.
+    void SyncMutePlate()
     {
-        var go = new GameObject("Btn " + text);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(540, 92);
-        rt.anchoredPosition = pos;
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.58f, 0.42f, 0.27f, 1f); // p9 kraft button
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var label = new GameObject("Text");
-        label.transform.SetParent(go.transform, false);
-        var lrt = label.AddComponent<RectTransform>();
-        Stretch(lrt);
-        var t = label.AddComponent<Text>();
-        t.text = text;
-        t.font = _font;
-        t.fontSize = 34;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.color = Color.white;
+        if (_muteBtnLabel != null) _muteBtnLabel.text = MuteLabel();
+        if (_mutePlate != null)
+            _mutePlate.color = IsMuted()
+                ? FeltUI.With(FeltUI.DarkRoast, 0.92f)
+                : FeltUI.With(FeltUI.Olive, 0.92f);
     }
 
     static void Stretch(RectTransform rt)

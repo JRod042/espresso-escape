@@ -18,7 +18,7 @@ public static class LevelDensitySmoke
             return;
         }
 
-        var spawner = Object.FindFirstObjectByType<LevelSetSpawner>();
+        var spawner = Object.FindAnyObjectByType<LevelSetSpawner>();
         if (spawner == null)
         {
             Debug.LogError("LEVEL_SMOKE_FAIL no LevelSetSpawner");

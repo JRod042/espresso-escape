@@ -1,31 +1,34 @@
 using UnityEngine;
 
-/// Land contact drives feel (Prompt 6/7). Weight on contact — not animation-only.
-/// Adds a take-off stretch and an OnLand event; squash numbers unchanged.
+/// Land contact drives feel. The felt body only settles a little — 285.mp4 has no squash or stretch.
+/// The root scale (capsule collider) is never changed.
 public class LandFeel : MonoBehaviour
 {
     public float landSpeedGate = 2.6f; // laneB-landfeel-gate-20260917
-    public float squash = 0.14f; // laneB-landfeel-squash-20260917
-    public float recover = 11f; // laneB-landfeel-recover-20260917
-    public float stretch = 0.10f; // take-off: taller/thinner for a beat
+    public float squash = 0.03f;  // very small settle on the felt body only
+    public float recover = 9.5f;  // plush recovery, a beat slower than the old 11
+    public float stretch = 0f;    // 285.mp4: the felt body does not elongate on the push-off
 
     /// Fired on landing with the impact speed (m/s).
     public static event System.Action<float> OnLand;
 
     Rigidbody body;
-    Vector3 baseScale;
-    float squashAmt;   // >0 squash, <0 stretch
+    Transform _felt;
+    Vector3 _rootBase, _feltBase;
+    float squashAmt;   // >0 settle, <0 stretch (stretch stays 0)
     bool wasAir;
     float lastVy;
 
     void Awake()
     {
         body = GetComponent<Rigidbody>();
-        baseScale = transform.localScale;
+        _rootBase = transform.localScale;
+        _felt = transform.Find("Bean Body");
+        _feltBase = _felt != null ? _felt.localScale : Vector3.one;
     }
 
-    void OnEnable() { BeanImpulse.OnHop += Hop; }
-    void OnDisable() { BeanImpulse.OnHop -= Hop; }
+    void OnEnable() { BeanImpulse.OnHop += Hop; BeanController.OnJump += Hop; }
+    void OnDisable() { BeanImpulse.OnHop -= Hop; BeanController.OnJump -= Hop; }
 
     void Hop() { squashAmt = -stretch; }
 
@@ -43,11 +46,19 @@ public class LandFeel : MonoBehaviour
         wasAir = air;
         lastVy = vy;
         squashAmt = Mathf.MoveTowards(squashAmt, 0f, Time.fixedDeltaTime * recover);
-        var s = baseScale;
-        s.y *= 1f - squashAmt;
-        s.x *= 1f + squashAmt * 0.5f;
-        s.z *= 1f + squashAmt * 0.5f;
-        transform.localScale = s;
+    }
+
+    void LateUpdate()
+    {
+        // keep the capsule at its authored scale
+        transform.localScale = _rootBase;
+        if (_felt == null) return;
+        float amt = squashAmt;
+        var s = _feltBase;
+        s.y *= 1f - amt;
+        s.x *= 1f + amt * 0.45f;
+        s.z *= 1f + amt * 0.45f;
+        _felt.localScale = s;
     }
 
     bool Grounded()

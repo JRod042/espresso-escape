@@ -21,14 +21,13 @@ public class GameSession : MonoBehaviour
     {
         if (I != null && I != this) { Destroy(gameObject); return; }
         I = this;
+        OpeningYard.Keep();
         DontDestroyOnLoad(gameObject);
         if (catalog == null)
-        {
             catalog = ScriptableObject.CreateInstance<LevelCatalog>();
-            catalog.RebuildAll();
-        }
-        else if (catalog.levels == null || catalog.levels.Length != LevelCatalog.LevelCount)
-            catalog.RebuildAll();
+        // Always rebuild from LevelCatalog.Make so a scene copy cannot keep the old
+        // per-level gravity (1.02–1.10) or the short L5 goal. Play gravity stays −22.
+        catalog.RebuildAll();
         currentLevelId = PlayerProgress.LastPlayed;
         BootQuality();
         if (GetComponent<EscapeAudio>() == null) gameObject.AddComponent<EscapeAudio>();
@@ -50,9 +49,17 @@ public class GameSession : MonoBehaviour
     void SetPhase(Phase p)
     {
         phase = p;
-        // the bean only hops in Play; menus must not spend taps on the physics body
-        var hop = FindFirstObjectByType<BeanImpulse>(FindObjectsInactive.Include);
-        if (hop != null) hop.enabled = p == Phase.Play;
+        // the bean only moves in Play; menus must not spend taps on the physics body.
+        // BeanController (run + jump) owns input when present; BeanImpulse stays on the bean for the proofs, disabled.
+        var hop = FindAnyObjectByType<BeanImpulse>(FindObjectsInactive.Include);
+        var ctl = FindAnyObjectByType<BeanController>(FindObjectsInactive.Include);
+        if (ctl == null && hop != null) ctl = hop.gameObject.AddComponent<BeanController>(); // scenes built before the controller existed
+        if (ctl != null)
+        {
+            ctl.enabled = p == Phase.Play;
+            if (hop != null) hop.enabled = false;
+        }
+        else if (hop != null) hop.enabled = p == Phase.Play;
     }
 
     public void GoTitle() { SetPhase(Phase.Title); }
@@ -64,7 +71,7 @@ public class GameSession : MonoBehaviour
         currentLevelId = Mathf.Clamp(id, 1, LevelCatalog.LevelCount);
         PlayerProgress.LastPlayed = currentLevelId;
         beansCollected = 0;
-        var runner = FindFirstObjectByType<LevelRunner>();
+        var runner = FindAnyObjectByType<LevelRunner>();
         if (runner != null) runner.LoadLevel(catalog.Get(currentLevelId));
         beansTotal = runner != null ? runner.PickupCount : 0;
         OnBeansChanged?.Invoke(beansCollected, beansTotal);
@@ -80,6 +87,7 @@ public class GameSession : MonoBehaviour
         PlayLevel(1);
     }
 
+    /// L1 → L2 → L3 → L4 → L5. CompleteLevel has already unlocked current+1.
     public void NextLevel()
     {
         int next = Mathf.Min(LevelCatalog.LevelCount, currentLevelId + 1);

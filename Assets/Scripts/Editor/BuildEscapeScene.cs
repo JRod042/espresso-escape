@@ -2,89 +2,61 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-/// LOOK-driven scene pass — Imagine handmade felt set (DriveLook/imagine/285.jpg, frames/set-*.jpg)
-/// staged as a side-scroller (LittleBigPlanet framing): run +X, lane z = 0, kraft wall at z = 3, camera in front.
-/// One clean felt egg bean (pale centre stitch, bead eyes, small smile, stub limbs on animated pivots), burlap
-/// start apron (LevelRunner builds the per-level lane with hop gaps), kraft wall + twine + clouds that follow
-/// the camera, felt tier pines, red pompom tree, grinder, goal post.
-/// Physics-critical bits are unchanged: Imagine Bean capsule (r 0.38 / h 0.86 / dir 1), Rigidbody
-/// (0.9 / 0.18 / 0.9), BeanImpulse, gravity -22, fixedDeltaTime 0.02.
+/// LOOK-driven mesh pass: stitched coffee-bean + dense handmade diorama.
 public static class BuildEscapeScene
 {
-    // The Look textures carry the plate colours (generated from DriveLook samples); tints are near-white multipliers.
-    static readonly Color FeltBrown = new Color(0.92f, 0.90f, 0.92f);     // clean mid-brown over tex-felt-brown (never > 1: no specks)
-    static readonly Color FeltDark = new Color(0.55f, 0.45f, 0.38f);      // trunks / pinecones / knobs over tex-felt-brown
-    static readonly Color Thread = new Color(0.88f, 0.80f, 0.64f);        // pale centre stitch (no texture)
-    static readonly Color Kraft = new Color(1.00f, 0.98f, 0.94f);         // over tex-kraft-corrugated
-    static readonly Color KraftDeep = new Color(0.78f, 0.74f, 0.70f);
-    static readonly Color KraftBg = new Color(0.66f, 0.52f, 0.36f);       // camera clear (only seen above the wall)
-    static readonly Color FeltPine = new Color(1.00f, 1.00f, 1.00f);      // olive felt (tex-yarn-green)
-    static readonly Color FeltPineLight = new Color(1.08f, 1.08f, 0.98f);
-    static readonly Color FeltMoss = new Color(0.96f, 1.00f, 0.90f);
-    static readonly Color FeltRed = new Color(1.00f, 1.00f, 1.00f);       // over tex-felt-red
-    static readonly Color FeltRedLight = new Color(1.10f, 1.06f, 1.02f);
-    static readonly Color Cloud = new Color(1.00f, 1.00f, 1.00f);         // over tex-felt-cream
-    static readonly Color Yarn = new Color(1.00f, 1.00f, 1.00f);          // over tex-yarn-fiber
-    static readonly Color YarnCream = new Color(1.05f, 1.03f, 1.00f);
-    static readonly Color TitleCream = new Color(1.00f, 0.98f, 0.94f);
-    static readonly Color TitleGold = new Color(1.00f, 0.86f, 0.50f);
-    static readonly Color Bead = new Color(0.02f, 0.015f, 0.012f);
-
-    // side-scroll stage: lane z = 0, run +X, kraft wall behind the set, camera in front
-    const float WallZ = 3.0f;
-    const float BgZ = 1.4f;   // background dressing band centre
-    const float FgZ = -0.9f;  // foreground dressing band centre (small items only)
-
-    // bean egg (local space; collider is r 0.38 / h 0.86 around the root)
-    const float EggRx = 0.31f, EggRy = 0.39f, EggRz = 0.28f, EggTaper = 0.12f;
-    static readonly Vector3 EggCenter = new Vector3(0f, 0.04f, 0f);
+    static readonly Color Felt = new Color(0.45f, 0.28f, 0.17f);
+    static readonly Color FeltDark = new Color(0.30f, 0.17f, 0.10f);
+    static readonly Color Stitch = new Color(0.92f, 0.86f, 0.72f);
+    static readonly Color Burlap = new Color(0.71f, 0.57f, 0.39f);
+    static readonly Color Kraft = new Color(0.300f, 0.216f, 0.132f); // k223 Kraft darken dSET ≤+11
+    static readonly Color KraftDark = new Color(0.208f, 0.144f, 0.082f); // k223 KraftDark dSET ≤+11
+    static readonly Color FeltPine = new Color(0.27f, 0.45f, 0.25f);
+    static readonly Color FeltRed = new Color(0.72f, 0.22f, 0.16f);
+    static readonly Color Cloud = new Color(0.97f, 0.96f, 0.93f);
+    static readonly Color Yarn = new Color(0.80f, 0.64f, 0.44f);
+    static readonly Color TitleCream = new Color(0.93f, 0.88f, 0.74f);
+    static readonly Color TitleGold = new Color(0.86f, 0.68f, 0.28f);
 
     [MenuItem("Escape/Build Scene")]
     public static void Build()
     {
-        SetupPipeline.Ensure(); // URP asset assigned to graphics + every quality level
-        AssetDatabase.ImportAsset("Assets/Look/FeltFiber.shader");
-        AssetDatabase.ImportAsset("Assets/Look/Bead.shader");
-        foreach (var t in new[] { "tex-felt-brown", "tex-felt-cream", "tex-felt-red", "tex-yarn-green", "tex-yarn-fiber", "tex-yarn-flower", "tex-burlap", "tex-kraft-corrugated", "tex-roast-bean", "tex-felt-normal", "tex-burlap-normal" })
-        {
-            ImportLookTexture($"Assets/Look/{t}.png", t.EndsWith("-normal"));
-            ImportLookTexture($"Assets/Resources/Look/{t}.png", t.EndsWith("-normal"));
-        }
-        CraftMesh.ClearSharedCache();
-
+        AssetDatabase.ImportAsset("Assets/Look/BeadUnlit.shader");
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         Time.fixedDeltaTime = 0.02f;
         Physics.gravity = new Vector3(0f, -22f, 0f);
         Physics.defaultContactOffset = 0.01f;
 
         Lights();
-        Floor();
+        FloorWall();
+        PathBridge();
         HandmadeSet();
+        StuffedTitle();
 
         var bean = StitchedBean();
-        bean.transform.position = new Vector3(0f, 0.76f, 0f);
-        bean.transform.rotation = Quaternion.Euler(0f, 145f, 0f); // faces the camera, turned a little into the run (285-01)
-
-        var backdrop = Backdrop();
-        var bf = backdrop.AddComponent<BackdropFollow>();
-        bf.target = bean.transform;
-        bf.aheadX = 1.05f;
+        bean.transform.position = new Vector3(0f, 0.76f, 0.35f);
+        // mid-stride lean like LOOK bean-motion
+        bean.transform.rotation = Quaternion.Euler(-10.0f, 180f, 7.0f); // k338 LAND pose lean −10/180/7 (yaw 180; Z≤k308)
 
         var camGo = new GameObject("Set Camera");
         var cam = camGo.AddComponent<Camera>();
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = KraftBg;
-        // 28 mm-equivalent side view (≈46° vertical): whole bean, burlap in front, twine + clouds on top, like the set frames
-        cam.usePhysicalProperties = false;
-        cam.fieldOfView = 46.4f;
+        cam.backgroundColor = KraftDark;
+        cam.fieldOfView = 36f;
         cam.nearClipPlane = 0.05f;
-        cam.farClipPlane = 90f;
         camGo.tag = "MainCamera";
-        camGo.AddComponent<AudioListener>();
+        camGo.transform.position = new Vector3(0.04f, 1.18f, -2.70f); // k188 =k184 plate framing (pose-only stub poke)
+        camGo.transform.rotation = Quaternion.Euler(7f, 0f, 0f); // k188 =k184
         var follow = camGo.AddComponent<SetCameraFollow>();
         follow.target = bean.transform;
-        camGo.transform.position = new Vector3(follow.offset.x, follow.restY + follow.offset.y, follow.offset.z);
-        camGo.transform.rotation = Quaternion.Euler(follow.pitch, 0f, 0f);
+        follow.offset = new Vector3(0.04f, 0.98f, -2.50f); // k188 =k184
+        // soft tabletop DOF (physical camera - best-effort without URP volume)
+        cam.usePhysicalProperties = true;
+        cam.focalLength = 50f;
+        cam.aperture = 2.2f;
+        cam.focusDistance = 2.4f;
+        cam.gateFit = Camera.GateFitMode.Horizontal;
+        SnapFaceToCamera(bean.transform, cam); // k495 eyes/smile on cam-facing skin (ForwardBase overlay)
 
         // Scope: GameSession + Title/Search UI + 5 HQ-level runner
         var sessionGo = new GameObject("Game Session");
@@ -95,50 +67,65 @@ public static class BuildEscapeScene
         var runnerGo = new GameObject("Level Runner");
         var runner = runnerGo.AddComponent<LevelRunner>();
         runner.bean = bean.transform;
-        runner.goalMarker = GoalPost().transform;
+        var goal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        goal.name = "Goal Marker";
+        goal.transform.position = new Vector3(0f, 0.5f, 12f);
+        goal.transform.localScale = new Vector3(1.2f, 0.05f, 1.2f);
+        Object.DestroyImmediate(goal.GetComponent<Collider>());
+        PaintTex(goal, "Assets/Look/tex-yarn-fiber.png", TitleGold, 0.85f);
+        runner.goalMarker = goal.transform;
         runnerGo.AddComponent<LevelSetSpawner>();
+        // Scope UI: TitleFlow + SearchMenu (5 HQ levels) - requires com.unity.ugui
         var ui = new GameObject("Title Flow");
         ui.AddComponent<TitleFlow>();
 
+
         EditorSceneManager.SaveScene(scene, "Assets/Escape.unity");
         AssetDatabase.SaveAssets();
-        Debug.Log("BUILD_SCENE_OK Assets/Escape.unity");
-        if (Application.isBatchMode) EditorApplication.Exit(0);
+        EditorApplication.Exit(0);
     }
-
-    /// Generated Look textures: repeat wrap, trilinear, normal maps imported as tangent-space normals.
-    static void ImportLookTexture(string path, bool normal)
-    {
-        AssetDatabase.ImportAsset(path);
-        var imp = AssetImporter.GetAtPath(path) as TextureImporter;
-        if (imp == null) return;
-        bool dirty = false;
-        var wantType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
-        if (imp.textureType != wantType) { imp.textureType = wantType; dirty = true; }
-        if (normal && imp.sRGBTexture) { imp.sRGBTexture = false; dirty = true; }
-        if (imp.wrapMode != TextureWrapMode.Repeat) { imp.wrapMode = TextureWrapMode.Repeat; dirty = true; }
-        if (imp.filterMode != FilterMode.Trilinear) { imp.filterMode = FilterMode.Trilinear; dirty = true; }
-        if (imp.anisoLevel < 4) { imp.anisoLevel = 4; dirty = true; }
-        if (dirty) imp.SaveAndReimport();
-    }
-
-    // ——— lights ———
 
     static void Lights()
     {
-        // Imagine plates: one soft warm key from upper-left-front, soft ground shadows, warm flat bounce.
+        // k43 LAND: Soft Key/Fill EXACT k39; PaintBean/albedo/wrap only (best dBean/-SET tradeoff)
         var key = new GameObject("Warm Key");
         var kl = key.AddComponent<Light>();
         kl.type = LightType.Directional;
-        kl.intensity = 0.95f;
-        kl.color = new Color(1.0f, 0.96f, 0.90f);
+        kl.intensity = 0.672f; // k275 Warm Key cut dSET
+        kl.color = new Color(1.010f, 0.976f, 0.934f); // k297 Warm Key LAND
         kl.shadows = LightShadows.Soft;
-        kl.shadowStrength = 0.62f;
-        kl.shadowBias = 0.03f;
-        kl.shadowNormalBias = 0.3f;
-        key.transform.rotation = Quaternion.Euler(50f, 30f, 0f);
+        key.transform.rotation = Quaternion.Euler(42f, -28f, 0f);
 
-        // Bean Soft Key / Soft Fill HELD (k511 / k494) — values untouched.
+        var fill = new GameObject("Warm Fill");
+        var fl = fill.AddComponent<Light>();
+        fl.type = LightType.Directional;
+        fl.intensity = 0.22f; // k169 Warm Fill LAND
+        fl.color = new Color(0.95f, 0.95f, 0.94f);
+        fill.transform.rotation = Quaternion.Euler(18f, 120f, 0f);
+
+        var bounce = new GameObject("Bounce");
+        var bl = bounce.AddComponent<Light>();
+        bl.type = LightType.Point;
+        bl.intensity = 0.680f; // k275 Bounce cut dSET
+        bl.range = 10f;
+        bl.color = new Color(0.985f, 0.965f, 0.940f); // k202 Bounce cooler chroma ~69
+        bounce.transform.position = new Vector3(0.15f, 2.6f, 1.4f);
+        var rim = new GameObject("Warm Rim");
+        var rl = rim.AddComponent<Light>();
+        rl.type = LightType.Directional;
+        rl.intensity = 0.22f; // k167 Warm Rim LAND
+        rl.color = new Color(1f, 0.95f, 0.88f);
+        rim.transform.rotation = Quaternion.Euler(-22f, 200f, 0f);
+        // soft under-table fill for contact-shadow readability
+        var under = new GameObject("Table Fill");
+        var ul = under.AddComponent<Light>();
+        ul.type = LightType.Point;
+        ul.intensity = 0.045f; // k223 Table Fill dSET
+        ul.range = 5.2f;
+        ul.color = new Color(1f, 0.96f, 0.92f);
+        under.transform.position = new Vector3(0.08f, 1.02f, 0.85f); // k146 Table Fill
+
+        // bean Soft Key/Fill EXACT k39 - material-only bean lift (k43 land)
         var beanKey = new GameObject("Bean Soft Key");
         var bk = beanKey.AddComponent<Light>();
         bk.type = LightType.Point;
@@ -155,194 +142,378 @@ public static class BuildEscapeScene
         beanFill.transform.position = new Vector3(-0.26f, 1.14f, 0.50f); // k188 Soft Fill =k184 pos
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.46f, 0.43f, 0.38f); // warm table bounce
-        RenderSettings.fog = false;
+        RenderSettings.ambientLight = new Color(0.55f, 0.53f, 0.52f); // k37 locked
+        RenderSettings.ambientIntensity = 0.768f; // k275 ambient cut dSET
     }
 
-    // ——— floor ———
-
-    static void Floor()
+    static void FloorWall()
     {
-        // start apron only: x ∈ [-5, 3]. LevelRunner builds the rest of the lane per level (burlap blocks + hop gaps).
-        // weave ≈ 1.8 cells/m like the plates
         var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
         floor.name = "Burlap Floor";
-        floor.transform.position = new Vector3(-1f, -0.08f, 0.5f);
-        floor.transform.localScale = new Vector3(8f, 0.16f, LevelRunner.LaneDepth);
-        PaintTexTiled(floor, "Assets/Look/tex-burlap.png", Color.white, 0.95f, new Vector2(14.4f, 10.8f), 1.4f, 0.08f, 0.70f);
+        floor.transform.position = new Vector3(0f, -0.08f, 3.2f);
+        floor.transform.localScale = new Vector3(11f, 0.16f, 16f);
+        // rotate-floor.mp4 opening cloth averages 175,140,95. White on tex-burlap
+        // (201,165,116) renders about 174,136,90, so lift green and blue a little.
+        PaintTex(floor, "Assets/Look/tex-burlap.png", new Color(1.006f, 1.029f, 1.063f), 0.95f);
+        var floorMat = floor.GetComponent<Renderer>().sharedMaterial;
+        // tex-burlap is 10 cells per repeat. Square weave, 1.6 repeats per metre
+        // on the 11 x 16 top (U along X, V along Z). Replaces the stretched 9x9 tile.
+        var floorTile = new Vector2(floor.transform.localScale.x * 1.6f, floor.transform.localScale.z * 1.6f);
+        if (floorMat.HasProperty("_BaseMap")) floorMat.SetTextureScale("_BaseMap", floorTile);
+        if (floorMat.HasProperty("_MainTex")) floorMat.SetTextureScale("_MainTex", floorTile);
+        if (floorMat.HasProperty("_BumpMap")) floorMat.SetTextureScale("_BumpMap", floorTile);
+        // Felt fuzz at 2.95 turns this weave into sand. The cloth is the albedo grid.
+        if (floorMat.HasProperty("_BumpScale")) floorMat.SetFloat("_BumpScale", 0f);
+        if (floorMat.HasProperty("_FiberAmt")) floorMat.SetFloat("_FiberAmt", 0f);
         Grip(floor);
-        floor.isStatic = true;
-        // frayed edge lip under the apron (reads as the cut edge of the burlap at the first gap)
-        var lip = Prim(PrimitiveType.Cube, "Burlap Edge", new Vector3(-1f, -0.17f, 0.5f), new Vector3(8.04f, 0.06f, LevelRunner.LaneDepth + 0.04f), false);
-        PaintTexTiled(lip, "Assets/Look/tex-burlap.png", new Color(0.62f, 0.52f, 0.40f), 0.98f, new Vector2(8f, 8f), 1.4f, 0.05f, 0.70f);
+        var seam = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        seam.name = "FloorWall Seam";
+        seam.transform.position = new Vector3(0f, 0.05f, 8.0f);
+        seam.transform.localScale = new Vector3(0.040f, 0.34f, 0.040f); // k482 stub seam soft LAND
+        PaintTex(seam, "Assets/Look/tex-kraft-corrugated.png", KraftDark, 0.9f);
+        Object.DestroyImmediate(seam.GetComponent<Collider>());
+
+        for (int i = 0; i < 36; i++)
+        {
+            var rib = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rib.name = "Kraft Rib " + i;
+            rib.transform.position = new Vector3(-7.7f + i * 0.44f, 2.5f, 8.4f);
+            rib.transform.localScale = new Vector3(0.40f, 6.4f, 0.36f);
+            // alternate ridge depth for corrugated cardboard side-read - k27
+            if (i % 2 == 1) rib.transform.localScale = new Vector3(0.22f, 6.4f, 0.14f);
+            PaintTex(rib, "Assets/Look/tex-kraft-corrugated.png", (i % 2 == 0) ? new Color(0.72f,0.66f,0.58f) : new Color(0.50f,0.42f,0.34f), 0.94f); // k63
+            Object.DestroyImmediate(rib.GetComponent<Collider>());
+            // thin flute face strip for kraft side corrugation read
+            if (i % 2 == 0)
+            {
+                var flute = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                flute.name = "Kraft Flute";
+                flute.transform.position = new Vector3(-7.7f + i * 0.44f, 2.5f, 8.18f);
+                flute.transform.localScale = new Vector3(0.06f, 6.2f, 0.08f);
+                PaintTex(flute, "Assets/Look/tex-kraft-corrugated.png", new Color(0.58f, 0.48f, 0.38f), 0.92f); // k63
+                Object.DestroyImmediate(flute.GetComponent<Collider>());
+            }
+        }
     }
 
-    // ——— start set dressing: the Imagine set as a side-scroll stage (set-01..06, 285-01..06) ———
+    static void PathBridge()
+    {
+        var path = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        path.name = "Burlap Path";
+        path.transform.position = new Vector3(0f, 0.02f, 2.6f);
+        path.transform.localScale = new Vector3(2.2f, 0.12f, 12f);
+        PaintTex(path, "Assets/Look/tex-burlap.png", new Color(0.82f,0.78f,0.72f), 0.95f); // k67 SET hold
+        Grip(path);
+        for (int e = 0; e < 18; e++)
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var edge = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                edge.name = "Path Yarn Edge";
+                edge.transform.position = new Vector3(s * 1.05f, 0.09f, 0.4f + e * 0.55f);
+                edge.transform.localScale = Vector3.one * 0.05f;
+                PaintTex(edge, "Assets/Look/tex-yarn-fiber.png", Stitch, 0.6f); // k63
+                Object.DestroyImmediate(edge.GetComponent<Collider>());
+            }
+        }
+
+        // arched cardboard bridge - planked deck + corrugated rails (LOOK set plate)
+        for (int p = 0; p < 11; p++)
+        {
+            float tArc = (p / 10f) * Mathf.PI;
+            float y = 0.22f + Mathf.Sin(tArc) * 0.42f;
+            float z = 4.45f + p * 0.16f;
+            var plank = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            plank.name = "Bridge Plank";
+            plank.transform.position = new Vector3(0f, y, z);
+            plank.transform.localScale = new Vector3(1.55f, 0.06f, 0.15f);
+            plank.transform.localRotation = Quaternion.Euler(Mathf.Cos(tArc) * -30f, 0f, 0f);
+            PaintTex(plank, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.90f);
+            Grip(plank);
+        }
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            for (int p = 0; p < 5; p++)
+            {
+                float tArc = (p / 4f) * Mathf.PI;
+                float y = 0.55f + Mathf.Sin(tArc) * 0.42f;
+                float z = 4.7f + p * 0.28f;
+                var post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                post.name = "Bridge Post";
+                post.transform.position = new Vector3(s * 0.78f, y, z);
+                post.transform.localScale = new Vector3(0.06f, 0.22f, 0.06f);
+                PaintTex(post, "Assets/Look/tex-kraft-corrugated.png", KraftDark, 0.88f);
+                Object.DestroyImmediate(post.GetComponent<Collider>());
+            }
+            var rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rail.name = "Bridge Rail";
+            rail.transform.position = new Vector3(s * 0.78f, 0.95f, 5.25f);
+            rail.transform.localScale = new Vector3(0.05f, 0.05f, 1.55f);
+            PaintTex(rail, "Assets/Look/tex-kraft-corrugated.png", KraftDark, 0.88f);
+            Object.DestroyImmediate(rail.GetComponent<Collider>());
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            var step = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            step.name = "Step";
+            step.transform.position = new Vector3(0f, 0.10f + i * 0.11f, 4.05f + i * 0.22f);
+            step.transform.localScale = new Vector3(1.45f, 0.09f, 0.28f);
+            PaintTex(step, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.90f);
+            Grip(step);
+        }
+        // felt grass tufts at bridge foot (LOOK set plate)
+        for (int g = 0; g < 8; g++)
+        {
+            float side = (g % 2 == 0) ? -1f : 1f;
+            var tuft = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            tuft.name = "Bridge Grass";
+            tuft.transform.position = new Vector3(side * (0.85f + (g % 4) * 0.12f), 0.10f + (g % 3) * 0.03f, 4.3f + (g % 3) * 0.15f);
+            tuft.transform.localScale = new Vector3(0.12f, 0.18f + (g % 2) * 0.05f, 0.10f);
+            PaintTex(tuft, "Assets/Look/tex-yarn-green.png", FeltPine, 0.93f);
+            Object.DestroyImmediate(tuft.GetComponent<Collider>());
+        }
+    }
 
     static void HandmadeSet()
     {
-        // background band (z ≈ 1.0 .. 2.4): felt pines left, grinder, red pompom tree right — like set-03 read left → right
-        Pine(new Vector3(-4.1f, 0f, BgZ + 0.6f), 1.15f);
-        Pine(new Vector3(-3.3f, 0f, BgZ + 1.0f), 0.90f);
-        Pine(new Vector3(-2.5f, 0f, BgZ + 0.3f), 0.70f);
-        Grinder(new Vector3(-1.4f, 0f, BgZ + 0.8f), 0.9f);
-        RedTree(new Vector3(1.3f, 0f, BgZ + 0.5f), 1.0f);
-        Pine(new Vector3(2.4f, 0f, BgZ + 0.9f), 0.75f);
+        Pine(new Vector3(-2.15f, 1.0f, 3.5f), 1.2f);
+        Pine(new Vector3(-2.6f, 0.78f, 4.5f), 0.92f);
+        Pine(new Vector3(2.5f, 0.72f, 5.0f), 0.78f);
+        Pine(new Vector3(-1.7f, 0.65f, 5.4f), 0.70f);
+        Pine(new Vector3(1.85f, 0.68f, 4.7f), 0.65f);
+        RedTree(new Vector3(2.2f, 1.08f, 3.55f));
+        // secondary bloom tree (LOOK set density)
+        RedTree(new Vector3(2.85f, 0.72f, 4.4f));
 
-        // moss balls: a few just behind the lane, two in front (285 foreground right)
-        MossBall(new Vector3(0.9f, 0f, BgZ - 0.5f), 0.26f);
-        MossBall(new Vector3(1.6f, 0f, BgZ - 0.3f), 0.18f);
-        MossBall(new Vector3(-2.0f, 0f, BgZ - 0.4f), 0.22f);
-        MossBall(new Vector3(-0.6f, 0f, FgZ), 0.20f);
-        MossBall(new Vector3(2.2f, 0f, FgZ - 0.2f), 0.14f);
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 basePos = new Vector3(-1.9f + i * 1.15f, 3.7f + (i % 2) * 0.15f, 7.25f);
+            for (int p = 0; p < 5; p++)
+            {
+                var c = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                c.name = "Felt Cloud";
+                float a = p * 1.4f;
+                c.transform.position = basePos + new Vector3(Mathf.Cos(a) * 0.22f, (p % 2) * 0.08f, Mathf.Sin(a) * 0.12f);
+                c.transform.localScale = new Vector3(0.55f + (p % 3) * 0.12f, 0.32f + (p % 2) * 0.08f, 0.40f);
+                PaintTex(c, "Assets/Look/tex-felt-brown.png", Cloud, 0.96f);
+                Object.DestroyImmediate(c.GetComponent<Collider>());
+            }
+        }
+        var twine = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        twine.name = "Twine";
+        twine.transform.position = new Vector3(0f, 3.9f, 7.3f);
+        twine.transform.localScale = new Vector3(6.2f, 0.025f, 0.025f);
+        PaintTex(twine, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.7f); // k63
+        Object.DestroyImmediate(twine.GetComponent<Collider>());
 
-        // roast beans scattered on the burlap, both bands
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 ballPos = new Vector3(-1.85f + i * 1.15f, 3.15f - (i % 2) * 0.15f, 7.05f);
+            var stringGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            stringGo.name = "Hang String";
+            stringGo.transform.position = new Vector3(ballPos.x, (3.9f + ballPos.y) * 0.5f, ballPos.z);
+            stringGo.transform.localScale = new Vector3(0.012f, Mathf.Abs(3.9f - ballPos.y) * 0.5f, 0.012f);
+            PaintTex(stringGo, "Assets/Look/tex-yarn-fiber.png", Stitch, 0.7f); // k63
+            Object.DestroyImmediate(stringGo.GetComponent<Collider>());
+            var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ball.name = "Yarn Ball";
+            ball.transform.position = ballPos;
+            ball.transform.localScale = Vector3.one * (0.2f + (i % 2) * 0.07f);
+            PaintTex(ball, "Assets/Look/tex-yarn-fiber.png", i % 2 == 0 ? Yarn : FeltPine, 0.92f);
+            Object.DestroyImmediate(ball.GetComponent<Collider>());
+            // crochet surface bumps on hanging orbs
+            for (int k = 0; k < 6; k++)
+            {
+                float a = k * 1.05f;
+                var bump = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                bump.name = "Yarn Bump";
+                bump.transform.position = ballPos + new Vector3(Mathf.Cos(a), Mathf.Sin(a * 1.2f), Mathf.Sin(a)) * (0.09f + (i % 2) * 0.02f);
+                bump.transform.localScale = Vector3.one * 0.06f;
+                PaintTex(bump, "Assets/Look/tex-yarn-fiber.png", i % 2 == 0 ? Yarn : FeltPine, 0.9f);
+                Object.DestroyImmediate(bump.GetComponent<Collider>());
+            }
+        }
+
+        MossBall(new Vector3(-1.05f, 0.16f, 1.55f), 0.26f);
+        MossBall(new Vector3(-0.5f, 0.12f, 1.95f), 0.18f);
+        MossBall(new Vector3(1.2f, 0.15f, 1.65f), 0.22f);
+        MossBall(new Vector3(0.55f, 0.11f, 1.35f), 0.14f);
+        MossBall(new Vector3(-1.35f, 0.10f, 2.1f), 0.15f);
+        MossBall(new Vector3(0.2f, 0.09f, 4.15f), 0.12f);
+        // soft felt contact shadows (tabletop LOOK read without URP)
+        Vector3[] shadowPts = {
+            new Vector3(0f, 0.025f, 0.35f), new Vector3(-1.6f, 0.025f, 1.1f),
+            new Vector3(1.65f, 0.025f, 1.3f), new Vector3(-2.7f, 0.025f, 2.25f),
+            new Vector3(-2.15f, 0.025f, 3.5f), new Vector3(2.2f, 0.025f, 3.55f),
+            new Vector3(2.5f, 0.025f, 5.0f), new Vector3(1.55f, 0.025f, 1.05f),
+            new Vector3(-1.05f, 0.025f, 1.55f), new Vector3(0.9f, 0.025f, 2.35f)
+        };
+        float[] shadowSc = { 0.76f, 0.24f, 0.24f, 0.78f, 0.55f, 0.50f, 0.40f, 0.28f, 0.20f, 0.16f };
+        for (int i = 0; i < shadowPts.Length; i++)
+        {
+            var sh = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            sh.name = "Contact Shadow";
+            sh.transform.position = shadowPts[i];
+            sh.transform.localScale = new Vector3(shadowSc[i], 0.004f, shadowSc[i] * 0.72f);
+            Paint(sh, new Color(0.22f, 0.15f, 0.10f, 1f), 0.99f);
+            Object.DestroyImmediate(sh.GetComponent<Collider>());
+        }
         Vector3[] roast = {
-            new Vector3(-3.4f, 0f, FgZ + 0.2f), new Vector3(-1.5f, 0f, FgZ - 0.1f), new Vector3(0.4f, 0f, FgZ + 0.1f),
-            new Vector3(1.9f, 0f, FgZ - 0.3f), new Vector3(-2.6f, 0f, BgZ - 0.6f), new Vector3(0.0f, 0f, BgZ - 0.7f),
-            new Vector3(2.7f, 0f, BgZ - 0.5f), new Vector3(-4.4f, 0f, BgZ - 0.2f)
+            new Vector3(-1.6f, 0.07f, 1.1f), new Vector3(1.65f, 0.07f, 1.3f),
+            new Vector3(0.9f, 0.07f, 2.35f), new Vector3(-0.8f, 0.07f, 1.4f),
+            new Vector3(0.35f, 0.07f, 1.8f), new Vector3(1.2f, 0.07f, 0.95f),
+            new Vector3(-1.2f, 0.07f, 2.5f), new Vector3(0.1f, 0.07f, 3.1f),
+            new Vector3(1.9f, 0.07f, 2.8f), new Vector3(-2.0f, 0.07f, 1.7f)
         };
         for (int i = 0; i < roast.Length; i++)
             RoastBean(roast[i], 0.09f + (i % 3) * 0.02f, i * 37f);
 
-        // pale felt succulents (285 bottom-left, set-03 bridge foot)
-        Succulent(new Vector3(-4.3f, 0f, FgZ + 0.1f), 1.0f);
-        Succulent(new Vector3(1.0f, 0f, FgZ - 0.25f), 0.7f);
-        Succulent(new Vector3(-0.3f, 0f, BgZ - 0.2f), 0.8f);
+        var grinder = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        grinder.name = "Cardboard Grinder";
+        grinder.transform.position = new Vector3(-2.7f, 0.55f, 2.25f);
+        grinder.transform.localScale = new Vector3(0.95f, 1.05f, 0.72f);
+        PaintTex(grinder, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.9f);
 
-        // hanging yarn balls on strings from the twine (set-03) — static, at the start of the run
-        var hang = new GameObject("Hanging Yarn");
-        hang.transform.position = new Vector3(0f, 0f, WallZ - 0.7f);
-        HangingBall(hang.transform, new Vector3(-4.0f, 2.35f, 0f), 0.30f, Yarn);
-        HangingBall(hang.transform, new Vector3(-2.6f, 2.70f, 0f), 0.24f, FeltPine);
-        HangingBall(hang.transform, new Vector3(1.9f, 2.78f, 0f), 0.22f, YarnCream);
-        HangingBall(hang.transform, new Vector3(3.3f, 2.40f, 0f), 0.30f, FeltPine);
+        for (int d = 0; d < 2; d++)
+        {
+            var drawer = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            drawer.name = "Grinder Drawer";
+            drawer.transform.position = new Vector3(-2.7f, 0.28f + d * 0.32f, 2.55f);
+            drawer.transform.localScale = new Vector3(0.78f, 0.22f, 0.12f);
+            PaintTex(drawer, "Assets/Look/tex-kraft-corrugated.png", KraftDark, 0.88f);
+            Object.DestroyImmediate(drawer.GetComponent<Collider>());
+            var knob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            knob.name = "Drawer Knob";
+            knob.transform.position = drawer.transform.position + new Vector3(0f, 0f, 0.08f);
+            knob.transform.localScale = Vector3.one * 0.07f;
+            PaintTex(knob, "Assets/Look/tex-felt-brown.png", FeltDark, 0.7f); // k63
+            Object.DestroyImmediate(knob.GetComponent<Collider>());
+        }
 
-        // one stitched felt title on the wall above the start (gen-5ee82b85)
-        var sign = new GameObject("Title Sign");
-        sign.transform.position = new Vector3(0f, 0f, WallZ - 0.30f);
-        PlaceWord(sign.transform, "ESPRESSO", new Vector3(-2.35f, 2.30f, 0f), TitleCream, 0.36f);
-        PlaceWord(sign.transform, "ESCAPE", new Vector3(-1.86f, 1.72f, 0f), TitleCream, 0.36f);
-    }
+        var hopper = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        hopper.name = "Grinder Hopper";
+        hopper.transform.position = new Vector3(-2.7f, 1.15f, 2.25f);
+        hopper.transform.localScale = new Vector3(0.55f, 0.28f, 0.55f);
+        PaintTex(hopper, "Assets/Look/tex-kraft-corrugated.png", KraftDark, 0.88f);
+        Object.DestroyImmediate(hopper.GetComponent<Collider>());
+        var crank = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        crank.name = "Grinder Crank";
+        crank.transform.position = new Vector3(-2.45f, 1.28f, 2.25f);
+        crank.transform.localScale = new Vector3(0.06f, 0.32f, 0.06f);
+        crank.transform.rotation = Quaternion.Euler(0f, 0f, 75f);
+        PaintTex(crank, "Assets/Look/tex-kraft-corrugated.png", FeltDark, 0.75f); // k63
+        Object.DestroyImmediate(crank.GetComponent<Collider>());
+        var crankKnob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        crankKnob.name = "Crank Knob";
+        crankKnob.transform.position = new Vector3(-2.15f, 1.38f, 2.25f);
+        crankKnob.transform.localScale = Vector3.one * 0.10f;
+        PaintTex(crankKnob, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.7f); // k63
+        Object.DestroyImmediate(crankKnob.GetComponent<Collider>());
 
-    // ——— goal: kraft post with a felt flag (crossing it clears the level) ———
-
-    static GameObject GoalPost()
-    {
-        var root = new GameObject("Goal Marker");
-        root.transform.position = new Vector3(14f, 0f, 0.55f);
-        var post = Child(root.transform, PrimitiveType.Cylinder, "Goal Post", new Vector3(0f, 0.75f, 0f), new Vector3(0.07f, 0.75f, 0.07f));
-        PaintTexTiled(post, "Assets/Look/tex-kraft-corrugated.png", KraftDeep, 0.88f, new Vector2(1f, 4f), 0.8f, 0.06f, 0.55f);
-        var flag = Child(root.transform, PrimitiveType.Cube, "Goal Flag", new Vector3(0.26f, 1.32f, 0f), new Vector3(0.48f, 0.30f, 0.03f));
-        PaintTex(flag, "Assets/Look/tex-felt-red.png", FeltRed, 0.93f);
-        var knot = Child(root.transform, PrimitiveType.Sphere, "Goal Knot", new Vector3(0f, 1.52f, 0f), Vector3.one * 0.11f);
-        PaintTex(knot, "Assets/Look/tex-yarn-fiber.png", TitleGold, 0.85f);
+        // pale felt succulent in yarn pot (LOOK set/285)
+        var pot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        pot.name = "Succulent Pot";
+        pot.transform.position = new Vector3(1.55f, 0.12f, 1.05f);
+        pot.transform.localScale = new Vector3(0.32f, 0.16f, 0.32f);
+        PaintTex(pot, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.9f);
+        Object.DestroyImmediate(pot.GetComponent<Collider>());
+        for (int i = 0; i < 7; i++)
+        {
+            var leaf = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            leaf.name = "Succulent Leaf";
+            float a = i * 0.95f;
+            leaf.transform.position = new Vector3(1.55f + Mathf.Cos(a) * 0.10f, 0.22f + (i % 3) * 0.05f, 1.05f + Mathf.Sin(a) * 0.10f);
+            leaf.transform.localScale = new Vector3(0.10f, 0.20f + (i % 2) * 0.04f, 0.08f);
+            leaf.transform.localRotation = Quaternion.Euler(15f, a * Mathf.Rad2Deg, 10f);
+            PaintTex(leaf, "Assets/Look/tex-yarn-green.png", new Color(0.62f, 0.72f, 0.48f), 0.92f);
+            Object.DestroyImmediate(leaf.GetComponent<Collider>());
+        }
+        // keep a small left succulent cluster too
         for (int i = 0; i < 4; i++)
         {
-            var ring = Child(root.transform, PrimitiveType.Cylinder, "Yarn Wrap", new Vector3(0f, 0.25f + i * 0.14f, 0f), new Vector3(0.10f, 0.03f, 0.10f));
-            PaintTex(ring, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.78f);
+            var leaf = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            leaf.name = "Succulent Leaf";
+            float a = i * 1.4f;
+            leaf.transform.position = new Vector3(-1.9f + Mathf.Cos(a) * 0.10f, 0.16f + (i % 2) * 0.05f, 1.0f + Mathf.Sin(a) * 0.10f);
+            leaf.transform.localScale = new Vector3(0.12f, 0.18f, 0.09f);
+            PaintTex(leaf, "Assets/Look/tex-yarn-green.png", new Color(0.62f, 0.72f, 0.48f), 0.92f);
+            Object.DestroyImmediate(leaf.GetComponent<Collider>());
         }
-        return root;
     }
 
-    // ——— backdrop group: kraft wall, flutes, twine, clouds — follows the camera along X ———
-
-    static GameObject Backdrop()
+    static void StuffedTitle()
     {
-        var root = new GameObject("Backdrop");
-        root.transform.position = new Vector3(0f, 0f, WallZ);
-
-        var wall = Child(root.transform, PrimitiveType.Cube, "Kraft Wall", new Vector3(0f, 3.6f, 0f), new Vector3(18f, 7.5f, 0.30f));
-        PaintTexTiled(wall, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.94f, new Vector2(7f, 1f), 0.8f, 0.06f, 0.55f);
-        // real flutes for parallax over the corrugation texture
-        for (int i = 0; i < 30; i++)
-        {
-            float x = -8.7f + i * 0.60f;
-            var flute = Child(root.transform, PrimitiveType.Cube, "Kraft Flute", new Vector3(x, 3.6f, -0.17f), new Vector3(0.09f, 7.4f, 0.05f));
-            PaintTexTiled(flute, "Assets/Look/tex-kraft-corrugated.png", i % 2 == 0 ? KraftDeep : Kraft, 0.94f, new Vector2(0.25f, 1f), 0.8f, 0.06f, 0.55f);
-        }
-
-        // twine across the top with three white felt clouds (285)
-        var twine = Child(root.transform, PrimitiveType.Cylinder, "Twine", new Vector3(0f, TwineY, -0.55f), new Vector3(0.018f, 9.0f, 0.018f));
-        twine.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-        PaintTex(twine, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.7f);
-        FeltCloud(root.transform, new Vector3(-3.4f, TwineY - 0.40f, -0.55f), 0.62f);
-        FeltCloud(root.transform, new Vector3(-0.3f, TwineY - 0.55f, -0.55f), 0.52f);
-        FeltCloud(root.transform, new Vector3(2.9f, TwineY - 0.38f, -0.55f), 0.58f);
-        return root;
+        // stacked stuffed titles like LOOK bean-motion plate
+        PlaceWord("ESPRESSO", new Vector3(-2.85f, 3.15f, 7.85f), TitleCream, 0.42f, false);
+        PlaceWord("ESCAPE", new Vector3(-1.95f, 2.55f, 7.85f), TitleGold, 0.42f, true);
+        PlaceWord("ESPRESSO", new Vector3(-2.55f, 1.95f, 7.70f), TitleCream, 0.48f, false);
+        PlaceWord("ESCAPE", new Vector3(-1.65f, 1.30f, 7.70f), TitleGold, 0.48f, true);
+        PlaceWord("CASA", new Vector3(-0.75f, 0.75f, 7.55f), Stitch, 0.24f, false);
     }
 
-    static void FeltCloud(Transform parent, Vector3 pos, float s)
-    {
-        // three lobes + a top puff, cream felt (tex-felt-cream from the plate clouds)
-        Vector3[] lobes = { new Vector3(0f, 0f, 0f), new Vector3(-0.42f, -0.06f, 0.02f), new Vector3(0.44f, -0.05f, 0.02f), new Vector3(0.05f, 0.22f, 0.03f) };
-        float[] sc = { 0.62f, 0.44f, 0.46f, 0.40f };
-        for (int i = 0; i < lobes.Length; i++)
-        {
-            var c = Child(parent, PrimitiveType.Sphere, "Felt Cloud", pos + lobes[i] * s, new Vector3(sc[i], sc[i] * 0.78f, sc[i] * 0.80f) * s);
-            PaintTex(c, "Assets/Look/tex-felt-cream.png", Cloud, 0.97f);
-        }
-        var str = Child(parent, PrimitiveType.Cylinder, "Cloud String", pos + new Vector3(0f, 0.30f * s, 0f), new Vector3(0.010f, 0.25f * s, 0.010f));
-        PaintTex(str, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.7f);
-    }
-
-    const float TwineY = 3.30f; // twine height: just inside the top of the 46° side view
-
-    static void HangingBall(Transform parent, Vector3 pos, float s, Color col)
-    {
-        float top = TwineY;
-        var str = Child(parent, PrimitiveType.Cylinder, "Hang String", new Vector3(pos.x, (top + pos.y) * 0.5f, pos.z), new Vector3(0.012f, (top - pos.y) * 0.5f, 0.012f));
-        PaintTex(str, "Assets/Look/tex-yarn-fiber.png", YarnCream, 0.7f);
-        var ball = Child(parent, PrimitiveType.Sphere, "Yarn Ball", pos, Vector3.one * s);
-        PaintTex(ball, col == FeltPine ? "Assets/Look/tex-yarn-green.png" : "Assets/Look/tex-yarn-fiber.png", col, 0.92f);
-        for (int k = 0; k < 4; k++)
-        {
-            float a = k * 1.57f + 0.4f;
-            var bump = Child(parent, PrimitiveType.Sphere, "Yarn Bump", pos + new Vector3(Mathf.Cos(a), Mathf.Sin(a * 1.2f) * 0.6f, Mathf.Sin(a)) * (s * 0.42f), Vector3.one * (s * 0.30f));
-            PaintTex(bump, col == FeltPine ? "Assets/Look/tex-yarn-green.png" : "Assets/Look/tex-yarn-fiber.png", col, 0.9f);
-        }
-    }
-
-    // ——— stitched felt letters ———
-
-    static void PlaceWord(Transform parent, string word, Vector3 start, Color color, float size)
+    static void PlaceWord(string word, Vector3 start, Color color, float size, bool alternate)
     {
         for (int i = 0; i < word.Length; i++)
         {
-            var pos = start + new Vector3(i * (size + 0.10f), 0f, 0f);
-            StuffedLetter(parent, word[i], pos, size, color);
+            var pos = start + new Vector3(i * (size + 0.12f), 0f, 0f);
+            Color letterCol = color;
+            if (alternate && (i % 2 == 1)) letterCol = new Color(0.92f, 0.45f, 0.18f);
+            StuffedLetter(word[i], pos, size, letterCol);
         }
     }
 
-    static void StuffedLetter(Transform parent, char c, Vector3 lp, float size, Color col)
+    // letter-shaped stuffed felt glyphs (LOOK bean-motion plate - not cubes)
+    static void StuffedLetter(char c, Vector3 pos, float size, Color col)
     {
         var root = new GameObject("Title " + c);
-        root.transform.SetParent(parent, false);
-        root.transform.localPosition = lp;
-        float t = size * 0.17f; // stroke thickness
-        float d = size * 0.34f; // depth
+        root.transform.position = pos;
+        float t = size * 0.16f; // stroke thickness
+        float d = size * 0.38f; // depth
         float h = size * 1.05f;
         float w = size * 0.72f;
-        void Bar(Vector3 p, Vector3 sc)
+        void Bar(Vector3 lp, Vector3 sc)
         {
+            // capsule stroke = stuffed sausage letter (LOOK bean-motion glyphs)
             var b = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             b.name = "GlyphBar";
             b.transform.SetParent(root.transform, false);
-            b.transform.localPosition = p;
+            b.transform.localPosition = lp;
             bool vertical = sc.y >= sc.x;
             if (vertical)
+            {
                 b.transform.localScale = new Vector3(Mathf.Max(sc.x, sc.z) * 1.1f, sc.y * 0.55f, Mathf.Max(sc.x, sc.z) * 1.1f);
+            }
             else
             {
                 b.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
                 b.transform.localScale = new Vector3(Mathf.Max(sc.y, sc.z) * 1.1f, sc.x * 0.55f, Mathf.Max(sc.y, sc.z) * 1.1f);
             }
+            PaintTex(b, "Assets/Look/tex-felt-brown.png", col, 0.92f);
             Object.DestroyImmediate(b.GetComponent<Collider>());
-            PaintTex(b, null, col, 0.92f);
+            var puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            puff.name = "GlyphPuff";
+            puff.transform.SetParent(root.transform, false);
+            puff.transform.localPosition = lp;
+            puff.transform.localScale = new Vector3(sc.x * 1.2f, sc.y * 0.65f, sc.z * 1.15f);
+            PaintTex(puff, "Assets/Look/tex-felt-brown.png", col, 0.94f);
+            Object.DestroyImmediate(puff.GetComponent<Collider>());
         }
-        void Stem(float x, float y0, float y1) => Bar(new Vector3(x, (y0 + y1) * 0.5f, 0f), new Vector3(t, Mathf.Abs(y1 - y0), d));
-        void Cross(float y, float x0, float x1) => Bar(new Vector3((x0 + x1) * 0.5f, y, 0f), new Vector3(Mathf.Abs(x1 - x0), t, d));
-        switch (char.ToUpperInvariant(c))
+        void Stem(float x, float y0, float y1)
+        {
+            float mid = (y0 + y1) * 0.5f;
+            float len = Mathf.Abs(y1 - y0);
+            Bar(new Vector3(x, mid, 0f), new Vector3(t, len, d));
+        }
+        void Cross(float y, float x0, float x1)
+        {
+            float mid = (x0 + x1) * 0.5f;
+            float len = Mathf.Abs(x1 - x0);
+            Bar(new Vector3(mid, y, 0f), new Vector3(len, t, d));
+        }
+        char u = char.ToUpperInvariant(c);
+        switch (u)
         {
             case 'E':
                 Stem(-w * 0.35f, -h * 0.5f, h * 0.5f);
@@ -387,29 +558,35 @@ public static class BuildEscapeScene
                 Cross(h * 0.42f, -w * 0.35f, w * 0.35f);
                 Cross(-h * 0.42f, -w * 0.35f, w * 0.35f);
                 break;
+            case 'T':
+                Stem(0f, -h * 0.5f, h * 0.35f);
+                Cross(h * 0.42f, -w * 0.4f, w * 0.4f);
+                break;
             default:
+                // rounded stuffed block fallback
                 Bar(Vector3.zero, new Vector3(w * 0.85f, h * 0.9f, d));
                 break;
         }
-        // four corner knots read as stitching without clutter
-        for (int s = 0; s < 4; s++)
+        // French-knot perimeter stitches
+        for (int s = 0; s < 8; s++)
         {
-            float a = (s / 4f) * Mathf.PI * 2f + Mathf.PI * 0.25f;
+            float a = (s / 8f) * Mathf.PI * 2f;
             var knot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             knot.name = "Title Knot";
             knot.transform.SetParent(root.transform, false);
-            knot.transform.localPosition = new Vector3(Mathf.Cos(a) * w * 0.52f, Mathf.Sin(a) * h * 0.52f, -d * 0.45f);
-            knot.transform.localScale = Vector3.one * (size * 0.07f);
+            knot.transform.localPosition = new Vector3(Mathf.Cos(a) * w * 0.55f, Mathf.Sin(a) * h * 0.55f, d * 0.55f);
+            knot.transform.localScale = Vector3.one * (size * 0.08f);
+            PaintTex(knot, "Assets/Look/tex-felt-brown.png", Stitch, 0.55f); // k63
             Object.DestroyImmediate(knot.GetComponent<Collider>());
-            CraftMesh.UseLowSphere(knot);
-            PaintTex(knot, null, Thread, 0.6f);
         }
     }
 
-    // ——— the bean ———
-
     static GameObject StitchedBean()
     {
+        // k489 PIVOT: LOOK 285 stranger silhouette FIRST (eyes/smile/seam) — wool metric ignored
+        // upright ovoid coffee-bean + vertical tan dash stitches + bead eyes + stub mid-stride limbs
+        // soft needle-felt via FeltFiber - REMOVE spike/orbiting fringe/halo that made lumpy CG ball
+        // cam-k48 structure FAIL - no soft structure wins; Prompt 10 REJECT until stranger-match
         var root = new GameObject("Imagine Bean");
         var rb = root.AddComponent<Rigidbody>();
         rb.mass = 0.9f;
@@ -425,356 +602,1104 @@ public static class BuildEscapeScene
         col.direction = 1;
         root.AddComponent<BeanImpulse>();
         root.AddComponent<LandFeel>();
-        root.AddComponent<BeanAnimator>(); // hop poses from frames 285-01..06 (limb pivots + body only)
 
-        // one clean felt egg — LOOK 285 body (no lobes, no trench, no naps)
-        var body = new GameObject("Bean Body");
-        body.transform.SetParent(root.transform, false);
-        body.transform.localPosition = EggCenter;
-        body.AddComponent<MeshFilter>().sharedMesh = CraftMesh.Egg(EggRx, EggRy, EggRz, EggTaper, 40, 28);
-        var bodyR = body.AddComponent<MeshRenderer>();
-        bodyR.sharedMaterial = BeanMaterial(true);
-        bodyR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        // k501 MESH: LOOK 285 two-lobe coffee-bean (NOT single potato ovoid)
+        // left/right lobes + mesh cleft valley; Soft Key 2.956 HELD; Soft Nap cliffs HELD
+        void SoftNapMat(GameObject go)
+        {
+            var nr = go.GetComponent<Renderer>();
+            if (nr == null || nr.sharedMaterial == null) return;
+            var m = new Material(nr.sharedMaterial);
+            if (m.HasProperty("_BumpScale")) m.SetFloat("_BumpScale", 0.92f); // k494 Soft Nap bump HELD
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", new Color(1.148f, 1.102f, 1.006f)); // k333 =k323 HELD
+            if (m.HasProperty("_Sheen")) m.SetFloat("_Sheen", 0.217f); // k468 Soft Nap sheen HELD
+            if (m.HasProperty("_Wrap")) m.SetFloat("_Wrap", 0.858f); // k328 Soft Nap wrap HELD
+            nr.sharedMaterial = m;
+        }
 
-        // pale centre stitch: 12 short thread dashes down the front meridian (name kept: Dash Stitch)
-        var threadMat = CraftMesh.Shared("thread", () => CraftMesh.Felt(null, Thread, Vector2.one, 0.6f, 0.10f, 0.7f, 0.9f));
+        // k674 MESH CLEFTNEST-DARK: CleftNestDark on k664 mid-strip HELD — Soft Key 2.956 HELD; padX/open86/bodyX/yaw45 HELD; NO Face Pad remesh; NO BeadUnlit Overlay; NO cheek lift
+        // Bean Cleft REMOVED; Soft Nap front-Z cut; no bunny-ear Y; Soft Key 2.956 HELD.
+        // k556 Bean Core SPLIT — continuous core was the mid-gap fill behind open V; L/R spines leave AIR mid
+        var coreL = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        coreL.name = "Bean Core L";
+        coreL.transform.SetParent(root.transform, false);
+        coreL.transform.localPosition = new Vector3(-0.172f, 0.007f, -0.205f); // k664 core Z mid-carve AO (no pad remesh)
+        coreL.transform.localScale = new Vector3(0.312f, 0.362f, 0.108f); // k664 core X AO wall mid-carve
+        coreL.transform.localRotation = Quaternion.Euler(0f, -17.0f, 0f);
+        Object.DestroyImmediate(coreL.GetComponent<Collider>());
+        PaintBean(coreL);
+        var coreR = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        coreR.name = "Bean Core R";
+        coreR.transform.SetParent(root.transform, false);
+        coreR.transform.localPosition = new Vector3(0.172f, 0.007f, -0.205f); // k664 core Z mid-carve AO (no pad remesh)
+        coreR.transform.localScale = new Vector3(0.312f, 0.362f, 0.108f); // k664 core X AO wall mid-carve
+        coreR.transform.localRotation = Quaternion.Euler(0f, 17.0f, 0f);
+        Object.DestroyImmediate(coreR.GetComponent<Collider>());
+        PaintBean(coreR);
+
+        var bodyL = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        bodyL.name = "Bean Lobe L";
+        bodyL.transform.SetParent(root.transform, false);
+        bodyL.transform.localPosition = new Vector3(-0.218f, 0.02f, -0.112f); // k664 body Z mid-carve AO (X HELD; no peanut)
+        bodyL.transform.localScale = new Vector3(0.460f, 0.355f, 0.236f); // k664 body Z thin mid-carve shade
+        bodyL.transform.localRotation = Quaternion.Euler(0f, -35.0f, 0f); // k586 LAND yaw // k585 fuse yaw // k584 body yaw max // k583 body yaw open // k581 body yaw cleft // k576 body yaw cleft // k571 body yaw cleft // k566 body yaw cleft // k561 body yaw cleft // k555 body yaw cleft // k551 body yaw outward // k546 body yaw outward — geometric cleft // k541 body yaw outward — geometric cleft // k536 body yaw outward — geometric cleft
+        Object.DestroyImmediate(bodyL.GetComponent<Collider>());
+        PaintBean(bodyL);
+
+        var bodyR = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        bodyR.name = "Bean Lobe R";
+        bodyR.transform.SetParent(root.transform, false);
+        bodyR.transform.localPosition = new Vector3(0.218f, 0.02f, -0.112f); // k664 body Z mid-carve AO (X HELD; no peanut)
+        bodyR.transform.localScale = new Vector3(0.460f, 0.355f, 0.236f); // k664 body Z thin mid-carve shade
+        bodyR.transform.localRotation = Quaternion.Euler(0f, 35.0f, 0f); // k586 LAND yaw // k585 fuse yaw // k584 body yaw max // k583 body yaw open // k581 body yaw cleft // k576 body yaw cleft // k571 body yaw cleft // k566 body yaw cleft // k561 body yaw cleft // k555 body yaw cleft // k551 body yaw outward // k546 body yaw outward — geometric cleft // k541 body yaw outward — geometric cleft // k536 body yaw outward — geometric cleft
+        Object.DestroyImmediate(bodyR.GetComponent<Collider>());
+        PaintBean(bodyR);
+
+        // Soft Nap on cheeks, front-Z CUT so nap does not occupy crease plane
+        var napL = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        napL.name = "Felt Nap L";
+        napL.transform.SetParent(root.transform, false);
+        napL.transform.localPosition = new Vector3(-0.205f, 0.02f, -0.210f); // k586 LAND nap // k585 nap fuse // k584 nap with body // k583 nap with body — no Soft Nap X-gap // k581 nap behind — no Soft Nap X-gap // k576 nap behind — no Soft Nap X-gap // k571 nap behind — no Soft Nap X-gap // k566 nap behind — no Soft Nap X-gap // k561 nap behind — no Soft Nap X-gap // k551 nap behind — no Soft Nap X-gap // k546 nap behind — no Soft Nap X-gap // k541 nap behind — no Soft Nap X-gap // k536 nap behind — no Soft Nap X-gap // k529 nap behind — no Soft Nap X-gap // k524 nap behind // k523 nap behind cheek // k522 nap behind cheek // k521 nap behind cheek // k516 behind cheek front
+        napL.transform.localScale = new Vector3(0.205f, 0.338f, 0.045f); // k581 front-Z cut HELD // k576 front-Z cut HELD // k571 front-Z cut HELD // k566 front-Z cut HELD // k561 front-Z cut HELD // k551 front-Z cut HELD // k546 front-Z cut HELD // k541 front-Z cut HELD // k536 front-Z cut HELD // k529 front-Z cut HELD // k524 front-Z cut HELD // k523 front-Z cut HELD // k522 front-Z cut HELD // k521 front-Z cut HELD // k516 front-Z cut
+        napL.transform.localRotation = Quaternion.identity;
+        Object.DestroyImmediate(napL.GetComponent<Collider>());
+        PaintBean(napL); SoftNapMat(napL);
+
+        var napR = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        napR.name = "Felt Nap R";
+        napR.transform.SetParent(root.transform, false);
+        napR.transform.localPosition = new Vector3(0.205f, 0.02f, -0.210f); // k586 LAND nap // k585 nap fuse // k584 nap with body // k583 nap with body
+        napR.transform.localScale = new Vector3(0.205f, 0.338f, 0.045f); // k581 front-Z cut HELD // k576 front-Z cut HELD // k571 front-Z cut HELD // k566 front-Z cut HELD // k561 front-Z cut HELD // k551 front-Z cut HELD // k546 front-Z cut HELD // k541 front-Z cut HELD // k536 front-Z cut HELD // k529 front-Z cut HELD // k524 front-Z cut HELD // k523 front-Z cut HELD // k522 front-Z cut HELD // k521 front-Z cut HELD // k516 front-Z cut
+        napR.transform.localRotation = Quaternion.identity;
+        Object.DestroyImmediate(napR.GetComponent<Collider>());
+        PaintBean(napR); SoftNapMat(napR);
+
+        // k582 Face Pad L/R DUAL-LOBE shells — widen X + thin medial so mid is CAM-EMPTY AIR (frontRecess NOT primary; face punch on shells)
+        var padL = new GameObject("Face Pad L");
+        padL.transform.SetParent(root.transform, false);
+        padL.transform.localPosition = new Vector3(-0.305f, 0.005f, 0.150f); // k586 LAND dual-lobe padX
+        padL.transform.localScale = new Vector3(0.148f, 0.248f, 0.218f); // k586 LAND lobe shell
+        padL.transform.localRotation = Quaternion.Euler(0f, -45.0f, 0f); // k586 LAND shell yaw
+        var padLmf = padL.AddComponent<MeshFilter>();
+        padLmf.sharedMesh = MakeFacePadHalfShellMesh(-1, 0.500f, 0.500f, 0.430f, 86.0f, 0.260f, 16, 12, 0.240f, 0.860f); // k633 medialFloor=0.240 lipProud=0.860 midShade=0.080 open86 HELD
+        padL.AddComponent<MeshRenderer>();
+        PaintBean(padL);
+        var padR = new GameObject("Face Pad R");
+        padR.transform.SetParent(root.transform, false);
+        padR.transform.localPosition = new Vector3(0.305f, 0.005f, 0.150f); // k586 LAND dual-lobe padX
+        padR.transform.localScale = new Vector3(0.148f, 0.248f, 0.218f); // k586 LAND lobe shell
+        padR.transform.localRotation = Quaternion.Euler(0f, 45.0f, 0f); // k586 LAND shell yaw
+        var padRmf = padR.AddComponent<MeshFilter>();
+        padRmf.sharedMesh = MakeFacePadHalfShellMesh(1, 0.500f, 0.500f, 0.430f, 86.0f, 0.260f, 16, 12, 0.240f, 0.860f); // k633 medialFloor=0.240 lipProud=0.860 midShade=0.080 open86 HELD
+        padR.AddComponent<MeshRenderer>();
+        PaintBean(padR);
+
+        // k552 Pad Channel L/R PARKED tiny rear — medial felt walls were re-filling carved mid-air (k547-551 FAIL); empty AIR between Face Pads is the trough
+        var chL = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        chL.name = "Pad Channel L";
+        chL.transform.SetParent(root.transform, false);
+        chL.transform.localPosition = new Vector3(-0.020f, 0.009f, -0.620f); // k581 PARKED rear — mid AIR // k576 PARKED rear — mid AIR // k571 PARKED rear — mid AIR // k566 PARKED rear — mid AIR // k561 PARKED rear — mid AIR // k552 PARKED rear — mid AIR
+        chL.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k581 PARKED tiny // k576 PARKED tiny // k571 PARKED tiny // k566 PARKED tiny // k561 PARKED tiny // k552 PARKED tiny
+        chL.transform.localRotation = Quaternion.identity;
+        Object.DestroyImmediate(chL.GetComponent<Collider>());
+        PaintBean(chL);
+        var chR = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        chR.name = "Pad Channel R";
+        chR.transform.SetParent(root.transform, false);
+        chR.transform.localPosition = new Vector3(0.020f, 0.009f, -0.620f); // k581 PARKED rear — mid AIR // k576 PARKED rear — mid AIR // k571 PARKED rear — mid AIR // k566 PARKED rear — mid AIR // k561 PARKED rear — mid AIR // k552 PARKED rear — mid AIR
+        chR.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k581 PARKED tiny // k576 PARKED tiny // k571 PARKED tiny // k566 PARKED tiny // k561 PARKED tiny // k552 PARKED tiny
+        chR.transform.localRotation = Quaternion.identity;
+        Object.DestroyImmediate(chR.GetComponent<Collider>());
+        PaintBean(chR);
+
+        // k582 Cheek Shell PARKED — medial walls were re-filling cam mid (want empty AIR cleft, not felt walls)
+        var shL = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        shL.name = "Cheek Shell L";
+        shL.transform.SetParent(root.transform, false);
+        shL.transform.localPosition = new Vector3(-0.020f, 0.005f, -0.620f); // k582 PARKED rear — mid AIR
+        shL.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k582 PARKED tiny
+        shL.transform.localRotation = Quaternion.Euler(0f, 38.5f, 0f);
+        Object.DestroyImmediate(shL.GetComponent<Collider>());
+        Paint(shL, new Color(0.200f, 0.110f, 0.060f), 0.96f);
+        var shR = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        shR.name = "Cheek Shell R";
+        shR.transform.SetParent(root.transform, false);
+        shR.transform.localPosition = new Vector3(0.020f, 0.005f, -0.620f); // k582 PARKED rear — mid AIR
+        shR.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k582 PARKED tiny
+        shR.transform.localRotation = Quaternion.Euler(0f, -38.5f, 0f);
+        Object.DestroyImmediate(shR.GetComponent<Collider>());
+        Paint(shR, new Color(0.200f, 0.110f, 0.060f), 0.96f);
+
+        // k633 Bean Trench = SeamFelt/FeltFiber DARK SEAM FLOOR between proud lips (not Valley Shade; not Pad Channel; not peanut; not sky hole; not Overlay sticker)
+        var trenchGo = new GameObject("Bean Trench");
+        trenchGo.transform.SetParent(root.transform, false);
+        trenchGo.transform.localPosition = new Vector3(0f, 0.010f, 0.152f); // k633 dark seam floor cam-Z
+        trenchGo.transform.localRotation = Quaternion.identity;
+        var trenchFilter = trenchGo.AddComponent<MeshFilter>();
+        trenchFilter.sharedMesh = MakeBeanTrenchMesh(0.180f, 0.260f, 0.360f, 0.080f, 6, 8); // k633 SeamFelt dark seam cavity
+        var trenchRend = trenchGo.AddComponent<MeshRenderer>();
+        PaintSeamFelt(trenchGo, new Color(0.006f, 0.002f, 0.001f), 0.280f, 0.020f, 0.985f); // k633 SeamFelt dark seam floor
+
+        // k633 SOLID SEAM PLUG — SeamFelt/FeltFiber depth-tested MID-BAND floor (NOT Valley Shade; NOT Pad Channel; NOT SoftNap-X; not peanut; NOT BeadUnlit Overlay)
+        var seamPlug = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        seamPlug.name = "Seam Plug";
+        seamPlug.transform.SetParent(root.transform, false);
+        seamPlug.transform.localPosition = new Vector3(0f, 0.010f, 0.170f); // k633 mid-band plug cam-Z
+        seamPlug.transform.localScale = new Vector3(0.300f, 0.420f, 0.260f); // k633 mid-band FeltFiber occluder (not full-height sticker)
+        Object.DestroyImmediate(seamPlug.GetComponent<Collider>());
+        PaintSeamFelt(seamPlug, new Color(0.003f, 0.001f, 0.000f), 0.280f, 0.020f, 0.985f); // k633 SeamFelt depth-tested mid-band seam (NO Overlay Always)
+
+
+
+
+
+
+
+        // k586 Valley Recess PARKED — dual-lobe empty AIR cleft (not capsule strip)
+        var valley = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        valley.name = "Valley Recess";
+        valley.transform.SetParent(root.transform, false);
+        valley.transform.localPosition = new Vector3(0.000f, 0.020f, -0.620f); // k581 PARKED rear // k576 PARKED rear // k571 PARKED rear // k566 PARKED rear // k561 PARKED rear // k551 PARKED rear // k546 PARKED rear // k541 PARKED rear // k536 PARKED rear // k529 cam-visible trough // k525 recessed in pad valley // k524 parked rear (no fill) // k523 between pads
+        valley.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k581 PARKED tiny // k576 PARKED tiny // k571 PARKED tiny // k566 PARKED tiny // k561 PARKED tiny // k551 PARKED tiny // k546 PARKED tiny // k541 PARKED tiny // k536 PARKED tiny // k529 wide shade trough // k525 thin shade trough // k524 disabled
+        Object.DestroyImmediate(valley.GetComponent<Collider>());
+        Paint(valley, new Color(0.040f, 0.020f, 0.010f), 0.99f); // k551 PARKED // k546 PARKED // k541 PARKED // k536 PARKED // k529 dark Valley Shade
+
+
+        // modest crown notch — not antlers
+        var tipL = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        tipL.name = "Crown Tip L";
+        tipL.transform.SetParent(root.transform, false);
+        tipL.transform.localPosition = new Vector3(-0.058f, 0.160f, -0.052f);
+        tipL.transform.localScale = new Vector3(0.094f, 0.034f, 0.078f);
+        Object.DestroyImmediate(tipL.GetComponent<Collider>());
+        PaintBean(tipL);
+        var tipR = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        tipR.name = "Crown Tip R";
+        tipR.transform.SetParent(root.transform, false);
+        tipR.transform.localPosition = new Vector3(0.058f, 0.160f, -0.052f);
+        tipR.transform.localScale = new Vector3(0.094f, 0.034f, 0.078f);
+        Object.DestroyImmediate(tipR.GetComponent<Collider>());
+        PaintBean(tipR);
+
+        // Bean Cleft fill-capsule REMOVED (k512+) — valley is the gap between front cheeks over core
+
+        // dark crease in the cheek valley (short — do not spear out the crown)
+        var crease = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        crease.name = "Crease";
+        crease.transform.SetParent(root.transform, false);
+        crease.transform.localPosition = new Vector3(0f, 0.02f, -0.620f); // k582 PARKED rear — mid AIR (dashes are LOOK seam)
+        crease.transform.localScale = new Vector3(0.004f, 0.004f, 0.004f); // k582 PARKED tiny
+        Object.DestroyImmediate(crease.GetComponent<Collider>());
+        Paint(crease, new Color(0.034f, 0.015f, 0.007f), 0.99f); // k582 PARKED
+
+        // LOOK 285: vertical tan DASH stitches down center (NOT baseball V / side zigzag)
+        // k60: LOOK tan yarn dashes - warm brown-tan, short, irregular yaw
         for (int i = 0; i < 12; i++)
         {
-            float lat = Mathf.Lerp(-58f, 66f, i / 11f);
-            Vector3 p0 = CraftMesh.EggPoint(EggRx, EggRy, EggRz, EggTaper, lat, 0f);
-            Vector3 p1 = CraftMesh.EggPoint(EggRx, EggRy, EggRz, EggTaper, lat + 4f, 0f);
-            Vector3 n = new Vector3(p0.x / (EggRx * EggRx), p0.y / (EggRy * EggRy), p0.z / (EggRz * EggRz)).normalized;
+            float y = -0.32f + i * 0.060f;
+            float jig = ((i % 3) - 1) * 0.006f;
             var dash = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             dash.name = "Dash Stitch";
             dash.transform.SetParent(root.transform, false);
-            dash.transform.localPosition = EggCenter + p0 + n * 0.004f + Vector3.right * (((i % 3) - 1) * 0.0015f);
-            dash.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (p1 - p0).normalized);
-            dash.transform.localScale = new Vector3(0.011f, 0.017f, 0.011f);
+            dash.transform.localPosition = new Vector3(jig, y, 0.075f); // k633 yarn IN dark seam recess
+            dash.transform.localScale = new Vector3(0.006f, 0.006f, 0.006f); // k633 yarn seed
+            dash.transform.localRotation = Quaternion.Euler(8f, 0f, -18f + i * 3f);
             Object.DestroyImmediate(dash.GetComponent<Collider>());
-            var dr = dash.GetComponent<Renderer>();
-            dr.sharedMaterial = threadMat;
-            dr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            PaintTex(dash, "Assets/Look/tex-yarn-fiber.png", new Color(0.72f, 0.58f, 0.38f), 0.88f); // k63 yarn dash
         }
 
-        // glossy bead eyes + highlight dots
-        var beadMat = CraftMesh.Shared("bead-eye", () => CraftMesh.Bead(Bead, 0.95f));
-        var hlMat = CraftMesh.Shared("bead-hl", () => CraftMesh.Bead(new Color(0.98f, 0.97f, 0.94f), 0.2f));
-        for (int side = -1; side <= 1; side += 2)
+        // stub mid-stride limbs (LOOK: short rounded, L forward)
+        Arm(root.transform, -0.40f);
+        Arm(root.transform, 0.40f);
+        Foot(root.transform, -0.14f);
+        Foot(root.transform, 0.14f);
+
+        // k495: face beads created in SnapFaceToCamera after MainCamera exists
+        // (local +Z Unlit/Color never punched through FeltFiber on cam-k494)
+
+        // k61: sparse short surface fibers (flush felt flecks - NOT orbiting spike/halo ring)
+        for (int i = 0; i < 148; i++) // k247 flecks hold — continuous no spike
         {
-            Vector3 p = CraftMesh.EggPoint(EggRx, EggRy, EggRz, EggTaper, 9f, side * 24f);
-            Vector3 n = new Vector3(p.x / (EggRx * EggRx), p.y / (EggRy * EggRy), p.z / (EggRz * EggRz)).normalized;
-            var e = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            e.name = "Eye";
-            e.transform.SetParent(root.transform, false);
-            e.transform.localPosition = EggCenter + p + n * 0.012f;
-            e.transform.localScale = Vector3.one * 0.062f;
-            Object.DestroyImmediate(e.GetComponent<Collider>());
-            var er = e.GetComponent<Renderer>();
-            er.sharedMaterial = beadMat;
-            er.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            var hl = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            hl.name = "Eye Highlight";
-            hl.transform.SetParent(root.transform, false);
-            hl.transform.localPosition = e.transform.localPosition + n * 0.027f + Vector3.up * 0.011f + Vector3.left * (side * 0.009f);
-            hl.transform.localScale = Vector3.one * 0.015f;
-            Object.DestroyImmediate(hl.GetComponent<Collider>());
-            var hr = hl.GetComponent<Renderer>();
-            hr.sharedMaterial = hlMat;
-            hr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            float u = (i + 0.5f) / 110f;
+            float yaw = u * Mathf.PI * 2f * 1.7f;
+            float pitch = Mathf.Lerp(-0.85f, 0.95f, (i % 11) / 10f);
+            float rx = Mathf.Cos(pitch) * Mathf.Sin(yaw);
+            float ry = Mathf.Sin(pitch);
+            float rz = Mathf.Cos(pitch) * Mathf.Cos(yaw);
+            // only keep mostly front-ish flecks for nap read toward cam (local +Z)
+            if (rz < -0.12f) continue;
+            if (Mathf.Abs(rx) < 0.660f && rz > -0.340f) continue; // k633 fleck mid AO shade (less strip = more mid dark)
+            var fib = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            fib.name = "Felt Fleck";
+            fib.transform.SetParent(root.transform, false);
+            float rad = 0.325f;
+            fib.transform.localPosition = new Vector3(rx * rad * 0.74f, ry * rad * 1.00f + 0.02f, rz * rad * 0.64f);
+            fib.transform.localScale = new Vector3(0.0001f, 0.035f, 0.0001f); // k494 body fleck length-profile LAND
+            fib.transform.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(rx, ry, rz));
+            Object.DestroyImmediate(fib.GetComponent<Collider>());
+            PaintBean(fib);
         }
 
-        // small thread smile: a shallow 7-bead arc under the eyes
-        var smileMat = CraftMesh.Shared("bead-smile", () => CraftMesh.Bead(new Color(0.07f, 0.04f, 0.03f), 0.5f));
-        for (int i = 0; i < 7; i++)
-        {
-            float t = i / 6f;
-            float lon = Mathf.Lerp(-11f, 11f, t);
-            float lat = -6.5f - Mathf.Sin(t * Mathf.PI) * 2.6f;
-            Vector3 p = CraftMesh.EggPoint(EggRx, EggRy, EggRz, EggTaper, lat, lon);
-            Vector3 n = new Vector3(p.x / (EggRx * EggRx), p.y / (EggRy * EggRy), p.z / (EggRz * EggRz)).normalized;
-            var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            s.name = "Smile";
-            s.transform.SetParent(root.transform, false);
-            s.transform.localPosition = EggCenter + p + n * 0.005f;
-            s.transform.localScale = Vector3.one * 0.012f;
-            Object.DestroyImmediate(s.GetComponent<Collider>());
-            CraftMesh.UseLowSphere(s);
-            var sr = s.GetComponent<Renderer>();
-            sr.sharedMaterial = smileMat;
-            sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        }
-
-        // short rounded mitt arms and stub legs. Each limb gets one small tucked Junction sphere where it
-        // meets the egg and one soft Nap shell (1.15, 1.05, 1.15) so the seam reads as a sewn joint —
-        // a soft joint, not a second torso. No Felt Fleck / Stub Fleck.
-        var limbMat = BeanMaterial(false);
-        Arm(root.transform, -1, limbMat);
-        Arm(root.transform, 1, limbMat);
-        Leg(root.transform, -1, limbMat);
-        Leg(root.transform, 1, limbMat);
         return root;
     }
 
-    static readonly Vector3 JunctionScale = new Vector3(0.28f, 0.22f, 0.26f);
-    static readonly Vector3 NapScale = new Vector3(1.15f, 1.05f, 1.15f);
-
-    /// Soft fuzzy shell over a limb capsule: same felt, a touch more rim fuzz, no shadow.
-    static Material NapMaterial()
+    // k170: stub FeltFiber/albedo nap — continuous felt with body (shared grain, soft edges, less CG sphere)
+    // k221: SoftStubNap bump clamp ≤3.0 (FeltFiber Range) — kill spike CG; continuous nap bury held
+    static void SoftStubNap(GameObject nap, float bump, Color baseMul)
     {
-        return CraftMesh.Shared("bean-nap", () =>
+        var r = nap.GetComponent<Renderer>();
+        if (r == null || r.sharedMaterial == null) return;
+        var m = new Material(r.sharedMaterial);
+        if (m.HasProperty("_BumpScale")) m.SetFloat("_BumpScale", Mathf.Min(bump, 2.95f)); // k221 Range clamp
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", baseMul);
+        if (m.HasProperty("_Sheen")) m.SetFloat("_Sheen", 0.028f); // k468 SoftStubNap sheen 0.028 HELD soft/hard-safe
+        if (m.HasProperty("_Wrap")) m.SetFloat("_Wrap", 0.901f); // k468 SoftStubNap wrap 0.901 HELD soft/hard-safe (cliff≥0.902)
+        r.sharedMaterial = m;
+    }
+
+    static void StubFlecks(Transform parent, int count, float rad)
+    {
+        // sparse flush flecks on stub surface — shared FeltFiber grain with body flecks
+        for (int i = 0; i < count; i++)
         {
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Look/tex-felt-brown.png");
-            var m = CraftMesh.Felt(tex, FeltBrown, new Vector2(2.5f, 2.5f), 1.0f, 0.22f, 0.66f, 0.96f, 0f);
-            if (m.HasProperty("_FiberAmt")) m.SetFloat("_FiberAmt", 0.06f);
-            return m;
-        });
+            float u = (i + 0.5f) / count;
+            float yaw = u * Mathf.PI * 2f * 1.9f;
+            float pitch = Mathf.Lerp(-0.95f, 0.95f, (i % 7) / 6f);
+            float rx = Mathf.Cos(pitch) * Mathf.Sin(yaw);
+            float ry = Mathf.Sin(pitch);
+            float rz = Mathf.Cos(pitch) * Mathf.Cos(yaw);
+            var fib = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            fib.name = "Stub Fleck";
+            fib.transform.SetParent(parent, false);
+            fib.transform.localPosition = new Vector3(rx * rad, ry * rad * 0.92f, rz * rad);
+            fib.transform.localScale = new Vector3(0.0001f, 1.060f, 0.0001f); // k468 stub fleck length-profile×13 xz-floor LAND
+            fib.transform.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(rx, ry, rz));
+            Object.DestroyImmediate(fib.GetComponent<Collider>());
+            PaintBean(fib);
+            SoftStubNap(fib, 5.42f, new Color(1.000f, 1.000f, 1.000f)); // k468 fleck SoftStubNap felt-merge bump LAND
+        }
     }
 
-    /// Small felt sphere tucked at the root end of a limb capsule (limb-local scale 0.28/0.22/0.26),
-    /// half sunk into the egg so the limb reads as sewn on.
-    static void Junction(Transform limb, string name, Material mat)
+    static void Arm(Transform parent, float x)
     {
-        var j = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        j.name = name;
-        j.transform.SetParent(limb, false);
-        j.transform.localPosition = new Vector3(0f, -0.92f, 0f); // capsule root end (unit capsule spans y ±1)
-        j.transform.localScale = JunctionScale;
-        Object.DestroyImmediate(j.GetComponent<Collider>());
-        CraftMesh.UseLowSphere(j);
-        var r = j.GetComponent<Renderer>();
-        r.sharedMaterial = mat;
-        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        // k494 MESH LAND: eyes-in-front ovoid + FeltFiber tiny-nap + SoftNapBump 0.92; Soft Key 2.956 HELD; Capsule KEEP; fleck×13
+        bool left = x < 0f;
+        var jn = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        jn.name = "Arm Junction";
+        jn.transform.SetParent(parent, false);
+        // flush bury — junction swallows short side-nub roots (scales held)
+        jn.transform.localPosition = new Vector3(x * 0.136f, left ? -0.016f : -0.033f, left ? 0.052f : -0.032f);
+        jn.transform.localScale = new Vector3(0.870f, 0.345f, 0.837f); // k468 junction join-XZ+cap-round bury Y-floor HELD
+        jn.transform.localRotation = Quaternion.Euler(left ? 11.5f : -10.5f, 0f, left ? 17.5f : -17.5f);
+        Object.DestroyImmediate(jn.GetComponent<Collider>());
+        PaintBean(jn);
+        SoftStubNap(jn, 5.60f, new Color(1.030f, 1.020f, 1.004f)); // k468 junction SoftStubNap HELD
+
+        // LOOK285 mitt: Capsule felt-nub + SoftCap round — soft-pad =k297 HELD
+        var a = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        a.name = "Arm";
+        a.transform.SetParent(parent, false);
+        a.transform.localPosition = new Vector3(x * (left ? 0.338f : 0.278f), left ? -0.050f : -0.140f, left ? 0.228f : -0.180f); // k312 Z-stride =k308 X=k307
+        a.transform.localScale = new Vector3(0.258f, 0.222f, 0.248f); // soft-pad =k297 HELD soft/hard-safe
+        // mitt hang: tip along +Y local after rotate — LOOK side-nub mitt profile
+        a.transform.localRotation = Quaternion.Euler(left ? 19f : -15f, left ? 8f : -8f, left ? 25.5f : -25.5f); // hang =k308
+        Object.DestroyImmediate(a.GetComponent<Collider>());
+        PaintBean(a);
+        SoftStubNap(a, 5.80f, new Color(1.044f, 1.032f, 1.012f)); // SoftStubNap HELD
+        StubFlecks(a.transform, 13, 0.230f); // fleck×13 HELD
+        // k482 subtle mitt lobe — soft/hard recover toward 0.42 (k469 path; soft-pad=k297 HELD)
+        var lobe = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        lobe.name = "Arm Mitt Lobe";
+        lobe.transform.SetParent(a.transform, false);
+        lobe.transform.localPosition = new Vector3(left ? 0.04f : -0.04f, 0.44f, 0.02f);
+        lobe.transform.localScale = new Vector3(0.82f, 0.62f, 0.78f); // k488 MittLobe LAND
+        Object.DestroyImmediate(lobe.GetComponent<Collider>());
+        PaintBean(lobe);
+        SoftStubNap(lobe, 4.80f, new Color(1.028f, 1.018f, 1.008f));
+
+        var softCap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        softCap.name = "Arm SoftCap";
+        softCap.transform.SetParent(a.transform, false);
+        softCap.transform.localPosition = new Vector3(0f, 0.60f, 0f);
+        softCap.transform.localScale = new Vector3(0.78f, 0.84f, 0.78f); // k488 SoftCap LAND
+        Object.DestroyImmediate(softCap.GetComponent<Collider>());
+        PaintBean(softCap);
+        SoftStubNap(softCap, 4.60f, new Color(1.024f, 1.016f, 1.008f));
+        StubSeamStitch(a.transform, left, true);
+
+        var an = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        an.name = "Arm Nap";
+        an.transform.SetParent(a.transform, false);
+        an.transform.localPosition = new Vector3(left ? 0.02f : -0.02f, 0.024f, 0.006f);
+        an.transform.localScale = new Vector3(2.72f, 2.58f, 2.64f); // Arm Nap =k297 HELD soft/hard cliff
+        Object.DestroyImmediate(an.GetComponent<Collider>());
+        PaintBean(an);
+        SoftStubNap(an, 4.55f, new Color(1.016f, 1.010f, 1.006f)); // Arm Nap =k323 LAND
     }
 
-    static void Nap(Transform limb, string name)
+    static void Foot(Transform parent, float x)
     {
-        var n = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        n.name = name;
-        n.transform.SetParent(limb, false);
-        n.transform.localPosition = Vector3.zero;
-        n.transform.localScale = NapScale;
-        Object.DestroyImmediate(n.GetComponent<Collider>());
-        var r = n.GetComponent<Renderer>();
-        r.sharedMaterial = NapMaterial();
-        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-    }
+        // k494 MESH LAND: eyes-in-front ovoid + FeltFiber tiny-nap + SoftNapBump 0.92; Soft Key 2.956 HELD; Capsule KEEP; fleck×13
+        bool left = x < 0f;
+        var hj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        hj.name = "Leg Junction";
+        hj.transform.SetParent(parent, false);
+        hj.transform.localPosition = new Vector3(x * 0.121f, left ? -0.025f : -0.108f, left ? 0.122f : -0.066f);
+        hj.transform.localScale = new Vector3(0.854f, 0.345f, 0.823f); // k468 junction Y-floor HELD
+        hj.transform.localRotation = Quaternion.Euler(left ? 15.5f : -13.5f, 0f, left ? -11.5f : 11.5f);
+        Object.DestroyImmediate(hj.GetComponent<Collider>());
+        PaintBean(hj);
+        SoftStubNap(hj, 5.60f, new Color(1.030f, 1.020f, 1.004f)); // SoftStubNap HELD
 
-    static Material BeanMaterial(bool seam)
-    {
-        return CraftMesh.Shared(seam ? "bean-body" : "bean-limb", () =>
-        {
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Look/tex-felt-brown.png");
-            var m = CraftMesh.Felt(tex, FeltBrown, new Vector2(2.5f, 2.5f), 1.0f, 0.14f, 0.62f, 0.94f, seam ? 0.65f : 0f);
-            if (m.HasProperty("_SeamWidth")) m.SetFloat("_SeamWidth", 0.020f);
-            if (m.HasProperty("_FiberAmt")) m.SetFloat("_FiberAmt", 0.07f);
-            return m;
-        });
-    }
-
-    // Limbs hang from pivot empties ("Arm Pivot L/R", "Leg Pivot L/R") at the shoulder / hip on the egg
-    // surface, identity rotation at rest; BeanAnimator swings and spreads the pivots (285 hop frames).
-
-    static void Arm(Transform parent, int side, Material mat)
-    {
-        bool left = side < 0;
-        var pivot = new GameObject(left ? "Arm Pivot L" : "Arm Pivot R");
-        pivot.transform.SetParent(parent, false);
-        pivot.transform.localPosition = new Vector3(side * 0.255f, 0.02f, 0.01f); // shoulder on the egg
-        pivot.transform.localRotation = Quaternion.identity;
-
-        var arm = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        arm.name = "Arm";
-        arm.transform.SetParent(pivot.transform, false);
-        // capsule +Y (mitt end) points mostly down and a little out: Euler z = -side·160° → (side·0.34, -0.94)
-        // BeanAnimator adds ≈20° of outward spread at rest (285-06) and ≈60° in the air (285-03)
-        arm.transform.localRotation = Quaternion.Euler(left ? 6f : -4f, 0f, -side * 160f);
-        arm.transform.localPosition = arm.transform.localRotation * Vector3.up * 0.115f; // root end sits on the pivot
-        arm.transform.localScale = new Vector3(0.105f, 0.13f, 0.105f);
-        Object.DestroyImmediate(arm.GetComponent<Collider>());
-        arm.GetComponent<Renderer>().sharedMaterial = mat;
-        // tucked joint where the arm enters the egg (half sunk into the body), plus the soft nap shell
-        Junction(arm.transform, "Arm Junction", mat);
-        Nap(arm.transform, "Arm Nap");
-        // rounded mitt at the tip
-        var mitt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        mitt.name = "Arm Mitt";
-        mitt.transform.SetParent(arm.transform, false);
-        mitt.transform.localPosition = new Vector3(0f, 0.95f, 0f); // along the capsule axis (scaled space)
-        mitt.transform.localScale = new Vector3(1.22f, 0.92f, 1.18f);
-        Object.DestroyImmediate(mitt.GetComponent<Collider>());
-        mitt.GetComponent<Renderer>().sharedMaterial = mat;
-    }
-
-    static void Leg(Transform parent, int side, Material mat)
-    {
-        bool left = side < 0;
-        var pivot = new GameObject(left ? "Leg Pivot L" : "Leg Pivot R");
-        pivot.transform.SetParent(parent, false);
-        pivot.transform.localPosition = new Vector3(side * 0.12f, -0.30f, 0.02f); // hip under the egg
-        pivot.transform.localRotation = Quaternion.identity;
-
+        // LOOK285 walk mitt: Capsule felt-nub + SoftCap round — soft-pad walk =k297 HELD
         var leg = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         leg.name = "Leg";
-        leg.transform.SetParent(pivot.transform, false);
-        leg.transform.localRotation = Quaternion.Euler(0f, 0f, side * 4f);
-        leg.transform.localPosition = new Vector3(0f, -0.065f, 0f);
-        leg.transform.localScale = new Vector3(0.12f, 0.085f, 0.12f);
+        leg.transform.SetParent(parent, false);
+        leg.transform.localPosition = new Vector3(x * (left ? 0.288f : 0.228f), left ? -0.066f : -0.292f, left ? 0.490f : -0.236f); // Z-stride =k308 X=k307
+        leg.transform.localScale = new Vector3(0.238f, 0.222f, 0.268f); // soft-pad walk =k297 HELD
+        leg.transform.localRotation = Quaternion.Euler(left ? -22f : 16f, left ? 10f : -9f, left ? -10f : 10f); // =k308
         Object.DestroyImmediate(leg.GetComponent<Collider>());
-        leg.GetComponent<Renderer>().sharedMaterial = mat;
-        // tucked joint under the egg where the leg starts, plus the soft nap shell
-        Junction(leg.transform, "Leg Junction", mat);
-        Nap(leg.transform, "Leg Nap");
-        var foot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        foot.name = "Foot";
-        foot.transform.SetParent(pivot.transform, false);
-        foot.transform.localPosition = new Vector3(side * 0.005f, -0.115f, 0.03f); // toe a touch forward (toward the face)
-        foot.transform.localScale = new Vector3(0.15f, 0.095f, 0.17f);
-        Object.DestroyImmediate(foot.GetComponent<Collider>());
-        foot.GetComponent<Renderer>().sharedMaterial = mat;
+        PaintBean(leg);
+        SoftStubNap(leg, 5.80f, new Color(1.044f, 1.032f, 1.012f)); // SoftStubNap HELD
+        StubFlecks(leg.transform, 13, 0.230f); // fleck×13 HELD
+        // k482 subtle mitt lobe walk — soft/hard recover
+        var lobe = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        lobe.name = "Leg Mitt Lobe";
+        lobe.transform.SetParent(leg.transform, false);
+        lobe.transform.localPosition = new Vector3(left ? 0.03f : -0.03f, 0.42f, left ? -0.04f : 0.04f);
+        lobe.transform.localScale = new Vector3(0.80f, 0.60f, 0.84f); // k488 MittLobe LAND
+        Object.DestroyImmediate(lobe.GetComponent<Collider>());
+        PaintBean(lobe);
+        SoftStubNap(lobe, 4.80f, new Color(1.028f, 1.018f, 1.008f));
+
+        var softCap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        softCap.name = "Leg SoftCap";
+        softCap.transform.SetParent(leg.transform, false);
+        softCap.transform.localPosition = new Vector3(0f, 0.60f, 0f);
+        softCap.transform.localScale = new Vector3(0.78f, 0.84f, 0.78f); // k488 SoftCap LAND
+        Object.DestroyImmediate(softCap.GetComponent<Collider>());
+        PaintBean(softCap);
+        SoftStubNap(softCap, 4.60f, new Color(1.024f, 1.016f, 1.008f));
+        StubSeamStitch(leg.transform, left, false);
+
+        var ln = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ln.name = "Leg Nap";
+        ln.transform.SetParent(leg.transform, false);
+        ln.transform.localPosition = new Vector3(left ? 0.02f : -0.02f, 0.034f, left ? -0.012f : 0.012f);
+        ln.transform.localScale = new Vector3(2.72f, 2.58f, 2.64f); // Leg Nap =k297 HELD
+        Object.DestroyImmediate(ln.GetComponent<Collider>());
+        PaintBean(ln);
+        SoftStubNap(ln, 4.55f, new Color(1.016f, 1.010f, 1.006f)); // Leg Nap =k323
+        // FOOT ABSORBED — no discrete Foot/FootNap (high-cam CG kill held)
     }
 
-    // ——— props ———
-
-    /// Felt pine: trunk + 5 stacked flattened tiers (wide → narrow) + tip + pinecone dots (LOOK 285).
-    static void Pine(Vector3 basePos, float scale)
+    // LOOK285 stub seam + tan yarn stitch path hints along mitt outer (not baseball V)
+    static void StubSeamStitch(Transform stub, bool left, bool isArm)
     {
-        var trunk = Prim(PrimitiveType.Cylinder, "Pine Trunk", basePos + Vector3.up * (0.14f * scale), new Vector3(0.11f, 0.16f, 0.11f) * scale, false);
-        PaintTex(trunk, "Assets/Look/tex-felt-brown.png", FeltDark, 0.9f);
-        for (int i = 0; i < 5; i++)
-        {
-            float t = i / 4f;
-            float w = Mathf.Lerp(0.98f, 0.36f, t);
-            float y = Mathf.Lerp(0.36f, 1.28f, t);
-            var tier = Prim(PrimitiveType.Sphere, "Pine Tier", basePos + Vector3.up * (y * scale), new Vector3(w, w * 0.40f, w) * scale, false);
-            PaintTex(tier, "Assets/Look/tex-yarn-green.png", i % 2 == 0 ? FeltPine : FeltPineLight, 0.94f);
-        }
-        var tip = Prim(PrimitiveType.Sphere, "Pine Tip", basePos + Vector3.up * (1.48f * scale), new Vector3(0.24f, 0.30f, 0.24f) * scale, false);
-        PaintTex(tip, "Assets/Look/tex-yarn-green.png", FeltPine, 0.94f);
-        for (int i = 0; i < 5; i++)
-        {
-            float a = i * 1.26f + 0.5f;
-            float r = Mathf.Lerp(0.40f, 0.20f, i / 4f);
-            var cone = Prim(PrimitiveType.Sphere, "Pinecone", basePos + new Vector3(Mathf.Cos(a) * r, 0.50f + i * 0.20f, Mathf.Sin(a) * r) * scale, Vector3.one * 0.10f * scale, false);
-            PaintTex(cone, "Assets/Look/tex-felt-brown.png", FeltDark, 0.85f);
-        }
-    }
+        var seam = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        seam.name = isArm ? "Arm Stub Seam" : "Leg Stub Seam";
+        seam.transform.SetParent(stub, false);
+        seam.transform.localPosition = new Vector3(left ? 0.12f : -0.12f, 0.08f, 0.18f);
+        seam.transform.localScale = new Vector3(0.045f, 0.38f, 0.045f);
+        seam.transform.localRotation = Quaternion.Euler(8f, 0f, left ? 6f : -6f);
+        Object.DestroyImmediate(seam.GetComponent<Collider>());
+        Paint(seam, new Color(0.22f, 0.12f, 0.07f), 0.95f);
+        SoftStubNap(seam, 4.20f, new Color(0.92f, 0.90f, 0.88f));
 
-    /// Red pompom tree: brown trunk, three branches, seven red felt balls (LOOK 285 right).
-    static void RedTree(Vector3 basePos, float scale)
-    {
-        var trunk = Prim(PrimitiveType.Cylinder, "Red Trunk", basePos + Vector3.up * (0.45f * scale), new Vector3(0.09f, 0.45f, 0.09f) * scale, false);
-        PaintTex(trunk, "Assets/Look/tex-felt-brown.png", FeltDark, 0.9f);
-        Vector3[] branchDir = { new Vector3(-0.55f, 0.75f, 0.1f), new Vector3(0.6f, 0.7f, -0.1f), new Vector3(0.05f, 0.9f, 0.25f) };
-        for (int b = 0; b < branchDir.Length; b++)
+        for (int i = 0; i < 3; i++)
         {
-            Vector3 d = branchDir[b].normalized;
-            Vector3 mid = basePos + Vector3.up * (0.86f * scale) + d * (0.22f * scale);
-            var br = Prim(PrimitiveType.Cylinder, "Red Branch", mid, new Vector3(0.05f, 0.24f, 0.05f) * scale, false);
-            br.transform.rotation = Quaternion.FromToRotation(Vector3.up, d);
-            PaintTex(br, "Assets/Look/tex-felt-brown.png", FeltDark, 0.9f);
-        }
-        // nine red felt balls in a loose crown (285 right: 7–9 pompoms on a brown trunk)
-        Vector3[] poms = {
-            new Vector3(-0.42f, 1.30f, 0.05f), new Vector3(-0.18f, 1.52f, -0.08f), new Vector3(0.12f, 1.62f, 0.10f),
-            new Vector3(0.42f, 1.42f, -0.05f), new Vector3(0.55f, 1.12f, 0.08f), new Vector3(-0.55f, 1.02f, -0.06f),
-            new Vector3(0.05f, 1.22f, 0.22f), new Vector3(-0.30f, 1.08f, 0.18f), new Vector3(0.32f, 1.00f, -0.16f)
-        };
-        for (int i = 0; i < poms.Length; i++)
-        {
-            float s = (0.26f + (i % 3) * 0.04f) * scale;
-            var pom = Prim(PrimitiveType.Sphere, "Red Pompom", basePos + poms[i] * scale, Vector3.one * s, false);
-            PaintTex(pom, "Assets/Look/tex-felt-red.png", i % 2 == 0 ? FeltRed : FeltRedLight, 0.93f);
+            float t = (i - 1) * 0.16f;
+            var dash = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            dash.name = isArm ? "Arm Stub Stitch" : "Leg Stub Stitch";
+            dash.transform.SetParent(stub, false);
+            dash.transform.localPosition = new Vector3(left ? 0.14f : -0.14f, 0.02f + t, 0.22f);
+            dash.transform.localScale = new Vector3(0.055f, 0.070f, 0.055f);
+            dash.transform.localRotation = Quaternion.Euler(12f, left ? 18f : -18f, left ? -22f + i * 4f : 22f - i * 4f);
+            Object.DestroyImmediate(dash.GetComponent<Collider>());
+            PaintTex(dash, "Assets/Look/tex-yarn-fiber.png", new Color(0.72f, 0.58f, 0.38f), 0.88f);
         }
     }
 
-    static void MossBall(Vector3 basePos, float s)
-    {
-        var m = Prim(PrimitiveType.Sphere, "Moss", basePos + Vector3.up * (s * 0.46f), Vector3.one * s, false);
-        PaintTex(m, "Assets/Look/tex-yarn-green.png", FeltMoss, 0.94f);
-    }
 
-    static void RoastBean(Vector3 basePos, float scale, float yaw)
-    {
-        var root = new GameObject("Roast Prop");
-        root.transform.position = basePos + Vector3.up * (scale * 0.42f);
-        root.transform.rotation = Quaternion.Euler(0f, yaw, 18f);
-        root.isStatic = true;
-        // glossy dark roast bean (plates: near-black brown, one lighter crease): tex-roast-bean carries the crease line
-        var tex = "Assets/Look/tex-roast-bean.png";
-        var l = Child(root.transform, PrimitiveType.Sphere, "Roast Lobe", new Vector3(-0.30f * scale, 0f, 0f), new Vector3(scale * 1.0f, scale * 0.78f, scale * 0.68f));
-        PaintTexTiled(l, tex, Color.white, 0.38f, Vector2.one, 0.6f, 0.30f, 0.50f);
-        var r = Child(root.transform, PrimitiveType.Sphere, "Roast Lobe", new Vector3(0.30f * scale, 0f, 0f), new Vector3(scale * 1.0f, scale * 0.78f, scale * 0.68f));
-        PaintTexTiled(r, tex, new Color(0.94f, 0.94f, 0.94f), 0.38f, Vector2.one, 0.6f, 0.30f, 0.50f);
-        var crease = Child(root.transform, PrimitiveType.Capsule, "Roast Crease", Vector3.zero, new Vector3(scale * 0.16f, scale * 0.30f, scale * 0.16f));
-        crease.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        PaintTexTiled(crease, tex, new Color(0.55f, 0.50f, 0.46f), 0.6f, Vector2.one, 0.6f, 0.10f, 0.50f);
-    }
 
-    static void Succulent(Vector3 basePos, float scale)
+
+    // k597+ Face Pad HALF-SHELL — HARDER mid-occlusion cut + proud seam LIPS (LOOK stitched trough); open86/fr kept
+    static Mesh MakeFacePadHalfShellMesh(int side, float rx, float ry, float rz, float openMedialDeg, float frontRecess, int segU, int segV, float medialFloorCut, float lipProud)
     {
-        var sage = new Color(1.18f, 1.14f, 1.06f); // paler sage over the olive felt (285 bottom-left)
-        for (int ring = 0; ring < 2; ring++)
+        // side -1 = left (open rim toward midline), +1 = right
+        // frontRecess 0..1: pull +Z (cam-front) verts back, stronger near medial rim
+        // medialFloorCut 0..1: HARDER — cut/open medial pad floor toward mid AIR so dark floor shades between lips
+        // lipProud 0..1: push rim lips proud toward cam + midline (seam lips catch light; cavity shades between)
+        segU = Mathf.Max(8, segU);
+        segV = Mathf.Max(6, segV);
+        float open = Mathf.Clamp(openMedialDeg, 8f, 110f) * Mathf.Deg2Rad;
+        float fr = Mathf.Clamp01(frontRecess);
+        float fc = Mathf.Clamp01(medialFloorCut);
+        float lp = Mathf.Clamp01(lipProud);
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var norms = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var tris = new System.Collections.Generic.List<int>();
+        int cols = segU + 1;
+        for (int iv = 0; iv <= segV; iv++)
         {
-            int n = ring == 0 ? 7 : 5;
-            float r = ring == 0 ? 0.13f : 0.06f;
-            for (int i = 0; i < n; i++)
+            float v = iv / (float)segV;
+            float theta = v * Mathf.PI;
+            float st = Mathf.Sin(theta);
+            float ct = Mathf.Cos(theta);
+            float midBand = 1f - Mathf.Abs(2f * v - 1f);
+            midBand = Mathf.Clamp01(midBand * 1.15f);
+            for (int iu = 0; iu <= segU; iu++)
             {
-                float a = i * (Mathf.PI * 2f / n) + ring * 0.45f;
-                var leaf = Prim(PrimitiveType.Sphere, "Succulent Leaf",
-                    basePos + new Vector3(Mathf.Cos(a) * r, 0.11f + ring * 0.07f, Mathf.Sin(a) * r) * scale,
-                    new Vector3(0.09f, 0.24f - ring * 0.05f, 0.07f) * scale, false);
-                leaf.transform.rotation = Quaternion.Euler(Mathf.Sin(a) * 28f, 0f, -Mathf.Cos(a) * 28f);
-                PaintTex(leaf, "Assets/Look/tex-yarn-green.png", sage, 0.93f);
+                float u = iu / (float)segU;
+                float phi = open + u * (Mathf.PI * 2f - 2f * open);
+                float cosP = Mathf.Cos(phi);
+                float sinP = Mathf.Sin(phi);
+                float x = side * rx * cosP * st;
+                float y = ry * ct;
+                float z = rz * sinP * st;
+                float medialW = 1f - 2f * Mathf.Min(u, 1f - u);
+                if (fr > 0f && z > 0f)
+                {
+                    float frontW = Mathf.Clamp01(z / Mathf.Max(1e-4f, rz));
+                    float w = fr * frontW * (0.30f + 0.70f * medialW) * Mathf.Clamp01(st + 0.15f);
+                    z *= (1f - 0.92f * w);
+                    float shrink = 1f - 0.38f * w;
+                    x *= shrink;
+                    y *= (1f - 0.12f * w);
+                    z *= shrink;
+                }
+                if (fc > 0f && z > -0.04f)
+                {
+                    float frontW2 = Mathf.Clamp01((z + 0.04f) / Mathf.Max(1e-4f, rz + 0.04f));
+                    float cut = fc * medialW * (0.20f + 0.80f * frontW2) * Mathf.Clamp01(st + 0.08f);
+                    cut *= (0.70f + 0.55f * midBand);
+                    cut = Mathf.Clamp01(cut);
+                    z *= (1f - 0.96f * cut);
+                    x *= (1f - 0.82f * cut);
+                    y *= (1f - 0.14f * cut);
+                }
+                verts.Add(new Vector3(x, y, z));
+                Vector3 n = new Vector3(side * cosP * st / Mathf.Max(1e-4f, rx),
+                                        ct / Mathf.Max(1e-4f, ry),
+                                        sinP * st / Mathf.Max(1e-4f, rz));
+                if (n.sqrMagnitude > 1e-8f) n.Normalize();
+                else n = Vector3.forward;
+                if ((fr > 0f || fc > 0f) && z > -0.04f)
+                {
+                    float tip = Mathf.Max(fr, fc) * medialW * (0.75f + 0.40f * midBand);
+                    n = (n + new Vector3(-side * 0.48f * tip, 0f, -0.70f * tip)).normalized;
+                }
+                norms.Add(n);
+                uvs.Add(new Vector2(u, v));
+            }
+        }
+        for (int iv = 0; iv < segV; iv++)
+        {
+            for (int iu = 0; iu < segU; iu++)
+            {
+                int i0 = iv * cols + iu;
+                int i1 = i0 + 1;
+                int i2 = i0 + cols;
+                int i3 = i2 + 1;
+                if (side < 0)
+                {
+                    tris.Add(i0); tris.Add(i2); tris.Add(i1);
+                    tris.Add(i1); tris.Add(i2); tris.Add(i3);
+                }
+                else
+                {
+                    tris.Add(i0); tris.Add(i1); tris.Add(i2);
+                    tris.Add(i1); tris.Add(i3); tris.Add(i2);
+                }
+            }
+        }
+        int rimBase = verts.Count;
+        float lip = 0.08f + 0.06f * fr + 0.14f * lp;
+        for (int iv = 0; iv <= segV; iv++)
+        {
+            float v = iv / (float)segV;
+            float theta = v * Mathf.PI;
+            float st = Mathf.Sin(theta);
+            float ct = Mathf.Cos(theta);
+            float midBand = 1f - Mathf.Abs(2f * v - 1f);
+            midBand = Mathf.Clamp01(midBand * 1.15f);
+            for (int edge = 0; edge < 2; edge++)
+            {
+                float phi = edge == 0 ? open : (Mathf.PI * 2f - open);
+                float cosP = Mathf.Cos(phi);
+                float sinP = Mathf.Sin(phi);
+                float x0 = side * rx * cosP * st;
+                float y0 = ry * ct;
+                float z0 = rz * sinP * st;
+                if (fr > 0f && z0 > 0f)
+                {
+                    float frontW = Mathf.Clamp01(z0 / Mathf.Max(1e-4f, rz));
+                    float w = fr * frontW * 0.95f * Mathf.Clamp01(st + 0.15f);
+                    z0 *= (1f - 0.92f * w);
+                    float shrink = 1f - 0.38f * w;
+                    x0 *= shrink; y0 *= (1f - 0.12f * w); z0 *= shrink;
+                }
+                if (lp > 0f)
+                {
+                    float puff = lp * Mathf.Clamp01(st + 0.05f) * (0.85f + 0.25f * midBand);
+                    z0 += 0.095f * puff * rz;
+                    x0 += -side * 0.062f * puff * rx;
+                }
+                Vector3 outer = new Vector3(x0, y0, z0);
+                Vector3 inner = outer * (1f - lip);
+                if (lp > 0f)
+                {
+                    inner = Vector3.Lerp(inner, new Vector3(x0 * (1f - lip * 1.20f), y0 * (1f - lip * 0.6f), z0 * (1f - lip * 1.30f)), lp);
+                }
+                verts.Add(outer);
+                verts.Add(inner);
+                Vector3 rn = (outer - inner);
+                if (rn.sqrMagnitude > 1e-8f) rn.Normalize();
+                else rn = side < 0 ? Vector3.right : Vector3.left;
+                norms.Add(rn); norms.Add(rn);
+                uvs.Add(new Vector2(edge, v)); uvs.Add(new Vector2(edge + 0.5f, v));
+            }
+        }
+        int rimStride = 4;
+        for (int iv = 0; iv < segV; iv++)
+        {
+            for (int edge = 0; edge < 2; edge++)
+            {
+                int o0 = rimBase + iv * rimStride + edge * 2;
+                int i0 = o0 + 1;
+                int o1 = rimBase + (iv + 1) * rimStride + edge * 2;
+                int i1 = o1 + 1;
+                if (side < 0)
+                {
+                    tris.Add(o0); tris.Add(o1); tris.Add(i0);
+                    tris.Add(i0); tris.Add(o1); tris.Add(i1);
+                }
+                else
+                {
+                    tris.Add(o0); tris.Add(i0); tris.Add(o1);
+                    tris.Add(i0); tris.Add(i1); tris.Add(o1);
+                }
+            }
+        }
+        var mesh = new Mesh();
+        mesh.name = side < 0 ? "FacePadHalfShellL" : "FacePadHalfShellR";
+        mesh.SetVertices(verts);
+        mesh.SetNormals(norms);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+
+    // k627+ SOLID-FILL FeltFiber/SeamFelt dark seam — closed volume occluder (NOT Pad Channel / NOT Valley Shade / NOT Overlay sticker)
+    static Mesh MakeBeanTrenchMesh(float halfW, float halfH, float depth, float wall, int segX, int segY)
+    {
+        float front = Mathf.Max(0.012f, wall * 0.45f);
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var norms = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var tris = new System.Collections.Generic.List<int>();
+        Vector3[] corners = new Vector3[]
+        {
+            new Vector3(-halfW, -halfH, -depth),
+            new Vector3( halfW, -halfH, -depth),
+            new Vector3( halfW,  halfH, -depth),
+            new Vector3(-halfW,  halfH, -depth),
+            new Vector3(-halfW, -halfH,  front),
+            new Vector3( halfW, -halfH,  front),
+            new Vector3( halfW,  halfH,  front),
+            new Vector3(-halfW,  halfH,  front),
+        };
+        Vector3[] faceN = new Vector3[]
+        {
+            Vector3.back, Vector3.back, Vector3.back, Vector3.back,
+            Vector3.forward, Vector3.forward, Vector3.forward, Vector3.forward,
+            Vector3.left, Vector3.left, Vector3.left, Vector3.left,
+            Vector3.right, Vector3.right, Vector3.right, Vector3.right,
+            Vector3.down, Vector3.down, Vector3.down, Vector3.down,
+            Vector3.up, Vector3.up, Vector3.up, Vector3.up,
+        };
+        int[] faceV = new int[]
+        {
+            0,1,2,3,
+            4,5,6,7,
+            0,3,7,4,
+            1,5,6,2,
+            0,4,5,1,
+            3,2,6,7,
+        };
+        for (int f = 0; f < 6; f++)
+        {
+            int b = verts.Count;
+            for (int i = 0; i < 4; i++)
+            {
+                int ci = faceV[f * 4 + i];
+                verts.Add(corners[ci]);
+                norms.Add(faceN[f * 4 + i]);
+                uvs.Add(new Vector2(i % 2, i / 2));
+            }
+            if (f == 1)
+            {
+                tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+                tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+            }
+            else
+            {
+                tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+                tris.Add(b); tris.Add(b + 3); tris.Add(b + 2);
+            }
+        }
+        var mesh = new Mesh();
+        mesh.name = "BeanTrenchSolidFill";
+        mesh.SetVertices(verts);
+        mesh.SetNormals(norms);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // k495: place LOOK 285 bead eyes + U-smile on the CAMERA-FACING skin.
+    // cam-k494 local +Z Unlit/Color was a no-draw in ForwardBase capture.
+    // k522+: HOLLOW face plane — beads on Face Pad L/R (lobes); crease/dashes in Valley Recess (no front disc).
+    static void SnapFaceToCamera(Transform bean, Camera cam)
+    {
+        if (bean == null || cam == null) return;
+        Vector3 toCam = (cam.transform.position - bean.position);
+        if (toCam.sqrMagnitude < 1e-6f) toCam = -bean.forward;
+        Vector3 n = bean.InverseTransformDirection(toCam.normalized);
+        n.Normalize();
+        Vector3 upGuess = Vector3.up;
+        Vector3 right = Vector3.Cross(upGuess, n);
+        if (right.sqrMagnitude < 1e-4f) right = Vector3.right;
+        right.Normalize();
+        Vector3 localUp = Vector3.Cross(n, right).normalized;
+
+        float eyeY = 0.064f; // k582 on dual-lobe peaks
+        float eyePush = 0.078f; // k633 on lobe peaks
+        float eyeScale = 0.082f; // k506 LOOK bead punch held
+        float hlScale = 0.018f;
+        float smileRec = 0.013f;
+        float creaseRec = 0.008f; // k582 crease PARKED — SnapFace no-op if tiny
+        float dashRec = 0.020f; // k633 yarn nest IN dark floor recess
+
+        var padL = bean.Find("Face Pad L");
+        var padR = bean.Find("Face Pad R");
+        var lobeL = bean.Find("Bean Lobe L");
+        var lobeR = bean.Find("Bean Lobe R");
+
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Transform anc = side < 0
+                ? (padL != null ? padL : lobeL)
+                : (padR != null ? padR : lobeR);
+            Vector3 basePos = anc != null
+                ? anc.localPosition
+                : (right * (side * 0.160f));
+            // attach bead to lobe/pad surface toward cam — hollow midline (no shared skin sphere)
+            Vector3 eyePos = basePos + n * eyePush + localUp * eyeY;
+            var e = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            e.name = "Eye";
+            e.transform.SetParent(bean, false);
+            e.transform.localPosition = eyePos;
+            e.transform.localScale = Vector3.one * eyeScale;
+            Object.DestroyImmediate(e.GetComponent<Collider>());
+            PaintBead(e, new Color(0.02f, 0.015f, 0.012f));
+
+            var hl = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            hl.name = "Eye Highlight";
+            hl.transform.SetParent(bean, false);
+            hl.transform.localPosition = eyePos + n * 0.022f + localUp * 0.014f + right * (-0.012f);
+            hl.transform.localScale = Vector3.one * hlScale;
+            Object.DestroyImmediate(hl.GetComponent<Collider>());
+            PaintBead(hl, new Color(0.98f, 0.97f, 0.94f));
+        }
+
+        // k504: NO Eye Socket spheres (were front-potato fill); BeadUnlit punch + deep skin = felted-in
+
+        // k581+ STRIP mid front fill — smile arcs on L/R cheek shells only (skip Cos≈0 bridge over trench)
+        float mouthY = eyeY - 0.128f;
+        int ns = 13;
+        float smileHalf = 0.043f;
+        float smileMidSkip = 0.255f; // k633 dark cleft keep
+        float smilePadOff = 0.125f; // k585 fuse arcs on dual-lobe shells
+        for (int i = 0; i < ns; i++)
+        {
+            float t = (i / (float)(ns - 1)) * Mathf.PI;
+            float cx = Mathf.Cos(t);
+            if (Mathf.Abs(cx) < smileMidSkip) continue; // air mid — no smile spheres flooring trench
+            float side = cx < 0f ? -1f : 1f;
+            Vector3 p = n * smileRec
+                + right * (cx * smileHalf + side * smilePadOff)
+                + localUp * (mouthY - Mathf.Sin(t) * 0.028f); // k581 smile on shells
+            var smile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            smile.name = "Smile";
+            smile.transform.SetParent(bean, false);
+            smile.transform.localPosition = p;
+            smile.transform.localScale = Vector3.one * 0.016f;
+            Object.DestroyImmediate(smile.GetComponent<Collider>());
+            PaintBead(smile, new Color(0.04f, 0.025f, 0.02f));
+        }
+
+        // crease + dashes live IN the valley recess (shade as trough, not drawn seam on disc)
+        var crease = bean.Find("Crease");
+        if (crease != null)
+        {
+            // k582: crease PARKED — do not re-inflate mid fill; empty AIR cleft + dashes = LOOK seam
+            if (crease.localScale.y < 0.02f)
+            {
+                // leave parked tiny rear
+            }
+            else
+            {
+                crease.localPosition = n * creaseRec;
+                crease.localRotation = Quaternion.FromToRotation(Vector3.up, localUp);
+                crease.localScale = new Vector3(0.005f, 0.150f, 0.005f);
+                Paint(crease.gameObject, new Color(0.034f, 0.015f, 0.007f), 0.99f);
+            }
+        }
+        var valley = bean.Find("Valley Recess");
+        if (valley != null)
+        {
+            valley.localRotation = Quaternion.FromToRotation(Vector3.up, localUp);
+            // keep mesh-local recess; nudge toward cam normal for shade lock
+            Vector3 vp = valley.localPosition;
+            valley.localPosition = new Vector3(0f, vp.y, vp.z);
+        }
+        var dashes = new System.Collections.Generic.List<Transform>();
+        foreach (Transform t in bean)
+            if (t.name == "Dash Stitch") dashes.Add(t);
+        var slots = new System.Collections.Generic.List<float>();
+        for (int k = 0; k < 24; k++)
+        {
+            float y = -0.38f + k * 0.048f; // full-height LOOK crease dashes
+            if (y > 0.40f) break;
+            if (Mathf.Abs(y - mouthY) < 0.040f) continue; // don't zipper the U-smile
+            slots.Add(y);
+        }
+        for (int di = 0; di < dashes.Count; di++)
+        {
+            var t = dashes[di];
+            if (di >= slots.Count)
+            {
+                t.localScale = Vector3.one * 0.0001f;
+                continue;
+            }
+            float y = slots[di];
+            t.localPosition = n * dashRec + localUp * y + right * (((di % 3) - 1) * 0.002f); // k633 yarn IN dark recess
+            t.localRotation = Quaternion.FromToRotation(Vector3.up, localUp) * Quaternion.Euler(8f, 0f, -18f + di * 3f);
+            t.localScale = new Vector3(0.006f, 0.010f, 0.006f); // k633 LOOK yarn in recess
+            PaintBead(t.gameObject, new Color(0.280f, 0.160f, 0.060f)); // k633 warm yarn
+        }
+
+        // k587+: seat Bean Trench seam cavity on cam normal (narrow U stays mid)
+        var trench = bean.Find("Bean Trench");
+        if (trench != null)
+        {
+            trench.localRotation = Quaternion.FromToRotation(Vector3.forward, n);
+            Vector3 tp = trench.localPosition;
+            float seamZ = Mathf.Abs(tp.z) > 0.02f ? Mathf.Abs(tp.z) : 0.050f;
+            trench.localPosition = n * seamZ;
+        }
+
+        // k633+: seat Seam Plug/Walls/Floor on cam normal (SeamFelt depth-tested mid-band)
+        var seamPlug = bean.Find("Seam Plug");
+        if (seamPlug != null)
+        {
+            seamPlug.localRotation = Quaternion.FromToRotation(Vector3.forward, n);
+            Vector3 sp = seamPlug.localPosition;
+            float plugZ = Mathf.Abs(sp.z) > 0.02f ? Mathf.Abs(sp.z) : 0.090f;
+            seamPlug.localPosition = n * plugZ + localUp * 0.010f;
+        }
+        foreach (string wn in new string[] { "Seam Wall L", "Seam Wall R" })
+        {
+            var sw = bean.Find(wn);
+            if (sw == null) continue;
+            float side = wn.EndsWith("L") ? -1f : 1f;
+            Vector3 swp = sw.localPosition;
+            float wallZ = Mathf.Abs(swp.z) > 0.02f ? Mathf.Abs(swp.z) : 0.110f;
+            float wallX = Mathf.Abs(swp.x) > 0.02f ? Mathf.Abs(swp.x) : 0.120f;
+            sw.localRotation = Quaternion.FromToRotation(Vector3.forward, n);
+            sw.localPosition = n * wallZ + right * (side * wallX) + localUp * 0.010f;
+        }
+        var seamPlugDeep = bean.Find("Seam Plug Deep");
+        if (seamPlugDeep != null)
+        {
+            seamPlugDeep.localRotation = Quaternion.FromToRotation(Vector3.forward, n);
+            Vector3 spd = seamPlugDeep.localPosition;
+            float deepZ = Mathf.Abs(spd.z) > 0.02f ? Mathf.Abs(spd.z) : 0.080f;
+            seamPlugDeep.localPosition = n * deepZ + localUp * 0.010f;
+        }
+        var seamFloor = bean.Find("Seam Floor");
+        if (seamFloor != null)
+        {
+            seamFloor.localRotation = Quaternion.FromToRotation(Vector3.forward, n);
+            Vector3 sf = seamFloor.localPosition;
+            float floorZ = Mathf.Abs(sf.z) > 0.02f ? Mathf.Abs(sf.z) : 0.080f;
+            seamFloor.localPosition = n * floorZ + localUp * 0.010f;
+        }
+
+    }
+
+    static void Pine(Vector3 pos, float scale)
+    {
+        var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        trunk.name = "Pine Trunk";
+        Vector3 trunkPos = pos + Vector3.down * 0.42f * scale;
+        trunk.transform.position = trunkPos;
+        trunk.transform.localScale = new Vector3(0.15f, 0.42f, 0.15f) * scale;
+        PaintTex(trunk, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.90f);
+        Object.DestroyImmediate(trunk.GetComponent<Collider>());
+        YarnWrapTrunk(trunkPos, 0.10f * scale, 0.38f * scale, 20, Yarn);
+        // layered amigurumi crown (LOOK set density)
+        var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        crown.name = "Pine Crown";
+        crown.transform.position = pos + Vector3.up * 0.22f * scale;
+        crown.transform.localScale = new Vector3(0.78f, 1.22f, 0.78f) * scale;
+        PaintTex(crown, "Assets/Look/tex-yarn-green.png", Color.white, 0.93f);
+        Object.DestroyImmediate(crown.GetComponent<Collider>());
+        for (int layer = 0; layer < 3; layer++)
+        {
+            var fuzz = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            fuzz.name = "Pine Fuzz";
+            float ly = 0.05f + layer * 0.22f;
+            float sc = 0.55f - layer * 0.08f;
+            fuzz.transform.position = pos + Vector3.up * ly * scale;
+            fuzz.transform.localScale = new Vector3(sc, sc * 0.7f, sc) * scale * 1.15f;
+            PaintTex(fuzz, "Assets/Look/tex-yarn-green.png", new Color(0.85f, 1f, 0.85f), 0.94f);
+            Object.DestroyImmediate(fuzz.GetComponent<Collider>());
+        }
+        // denser layered felt flap rings (LOOK 285 evergreen) - k24
+        for (int ring = 0; ring < 5; ring++)
+        {
+            int flaps = 7 + ring;
+            float ry = 0.58f - ring * 0.15f;
+            float rad = 0.20f + ring * 0.09f;
+            for (int f = 0; f < flaps; f++)
+            {
+                float a = f * (Mathf.PI * 2f / flaps) + ring * 0.2f;
+                var flap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                flap.name = "Pine Flap";
+                flap.transform.position = pos + new Vector3(Mathf.Cos(a) * rad, ry, Mathf.Sin(a) * rad) * scale;
+                flap.transform.localScale = new Vector3(0.18f, 0.09f, 0.26f) * scale;
+                flap.transform.localRotation = Quaternion.Euler(25f, a * Mathf.Rad2Deg, 0f);
+                PaintTex(flap, "Assets/Look/tex-yarn-green.png", new Color(0.9f, 1f, 0.9f), 0.93f);
+                Object.DestroyImmediate(flap.GetComponent<Collider>());
+            }
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            var dot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            float a = i * 0.72f;
+            float rr = 0.28f + (i % 3) * 0.05f;
+            dot.transform.position = crown.transform.position + new Vector3(Mathf.Cos(a) * rr, (i % 4) * 0.10f - 0.1f, Mathf.Sin(a) * rr) * scale;
+            dot.transform.localScale = Vector3.one * (0.07f + (i % 2) * 0.03f) * scale;
+            Color dcol = (i % 3 == 0) ? FeltRed : ((i % 3 == 1) ? new Color(0.75f, 0.7f, 0.3f) : new Color(0.95f, 0.55f, 0.2f));
+            PaintTex(dot, (i % 3 == 0) ? "Assets/Look/tex-felt-brown.png" : "Assets/Look/tex-yarn-flower.png", dcol, 0.9f); // k63
+            Object.DestroyImmediate(dot.GetComponent<Collider>());
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * 1.7f;
+            var cone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            cone.name = "Pinecone";
+            cone.transform.position = crown.transform.position + new Vector3(Mathf.Cos(a) * 0.22f, -0.25f, Mathf.Sin(a) * 0.22f) * scale;
+            cone.transform.localScale = Vector3.one * 0.08f * scale;
+            PaintTex(cone, "Assets/Look/tex-felt-brown.png", FeltDark, 0.85f); // k63
+            Object.DestroyImmediate(cone.GetComponent<Collider>());
+        }
+        // amigurumi crochet loop density on crown - k46 tinier denser microstructure
+        for (int i = 0; i < 72; i++)
+        {
+            float a = i * 0.31f;
+            float rr = 0.14f + (i % 8) * 0.048f;
+            float yy = -0.22f + (i % 10) * 0.062f;
+            var loop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            loop.name = "Pine Yarn Loop";
+            loop.transform.position = crown.transform.position + new Vector3(Mathf.Cos(a) * rr, yy, Mathf.Sin(a) * rr) * scale;
+            loop.transform.localScale = Vector3.one * (0.020f + (i % 5) * 0.006f) * scale;
+            PaintTex(loop, "Assets/Look/tex-yarn-green.png", new Color(0.86f, 1f, 0.86f), 0.92f);
+            Object.DestroyImmediate(loop.GetComponent<Collider>());
+        }
+        // micro crochet bump spheres for close-up yarn-loop read - k46 denser
+        for (int i = 0; i < 60; i++)
+        {
+            float a = i * 0.41f + 0.15f;
+            float rr = 0.18f + (i % 7) * 0.035f;
+            float yy = -0.12f + (i % 8) * 0.065f;
+            var bump = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            bump.name = "Pine Crochet Bump";
+            bump.transform.position = crown.transform.position + new Vector3(Mathf.Cos(a) * rr, yy, Mathf.Sin(a) * rr) * scale;
+            bump.transform.localScale = Vector3.one * (0.012f + (i % 4) * 0.004f) * scale;
+            PaintTex(bump, "Assets/Look/tex-yarn-green.png", new Color(0.72f, 0.94f, 0.70f), 0.94f);
+            Object.DestroyImmediate(bump.GetComponent<Collider>());
+        }
+        // tiny pine needle-tip puffs (amigurumi silhouette)
+        for (int i = 0; i < 28; i++)
+        {
+            float a = i * 0.55f;
+            float rr = 0.30f + (i % 4) * 0.03f;
+            float yy = -0.08f + (i % 5) * 0.10f;
+            var tip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            tip.name = "Pine Needle Tip";
+            tip.transform.position = crown.transform.position + new Vector3(Mathf.Cos(a) * rr, yy, Mathf.Sin(a) * rr) * scale;
+            tip.transform.localScale = Vector3.one * (0.010f + (i % 3) * 0.003f) * scale;
+            PaintTex(tip, "Assets/Look/tex-yarn-green.png", new Color(0.55f, 0.78f, 0.48f), 0.95f);
+            Object.DestroyImmediate(tip.GetComponent<Collider>());
+        }
+    }
+
+    static void YarnWrapTrunk(Vector3 center, float radius, float halfH, int rings, Color col)
+    {
+        for (int i = 0; i < rings; i++)
+        {
+            float t = i / (float)(rings - 1);
+            float y = center.y - halfH + t * halfH * 2f;
+            float a0 = t * Mathf.PI * 6f;
+            for (int k = 0; k < 5; k++)
+            {
+                float a = a0 + k * (Mathf.PI * 2f / 5f);
+                var loop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                loop.name = "Yarn Loop";
+                loop.transform.position = new Vector3(center.x + Mathf.Cos(a) * radius * 1.15f, y, center.z + Mathf.Sin(a) * radius * 1.15f);
+                loop.transform.localScale = Vector3.one * (radius * 0.55f);
+                PaintTex(loop, "Assets/Look/tex-yarn-fiber.png", col, 0.88f);
+                Object.DestroyImmediate(loop.GetComponent<Collider>());
             }
         }
     }
 
-    static void Grinder(Vector3 basePos, float scale)
+    static void RedTree(Vector3 pos)
     {
-        var body = Prim(PrimitiveType.Cube, "Cardboard Grinder", basePos + Vector3.up * (0.52f * scale), new Vector3(0.80f, 1.0f, 0.70f) * scale);
-        PaintTexTiled(body, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.9f, new Vector2(2.5f, 1f), 0.8f, 0.06f, 0.55f);
-        for (int d = 0; d < 2; d++)
+        var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        trunk.name = "Red Trunk";
+        Vector3 trunkPos = pos + Vector3.down * 0.48f;
+        trunk.transform.position = trunkPos;
+        trunk.transform.localScale = new Vector3(0.22f, 0.58f, 0.22f);
+        PaintTex(trunk, "Assets/Look/tex-yarn-fiber.png", Yarn, 0.90f);
+        Object.DestroyImmediate(trunk.GetComponent<Collider>());
+        YarnWrapTrunk(trunkPos, 0.14f, 0.52f, 22, Yarn);
+        // oversized knitted flower canopy (LOOK set: red/orange/yellow blooms)
+        Color[] blooms = {
+            FeltRed,
+            new Color(0.92f, 0.45f, 0.18f),
+            new Color(0.95f, 0.72f, 0.22f),
+            new Color(0.85f, 0.22f, 0.18f),
+            new Color(0.98f, 0.55f, 0.15f),
+            new Color(0.78f, 0.18f, 0.35f)
+        };
+        for (int i = 0; i < 28; i++)
         {
-            var drawer = Prim(PrimitiveType.Cube, "Grinder Drawer", basePos + new Vector3(0f, (0.26f + d * 0.30f) * scale, 0.36f * scale), new Vector3(0.62f, 0.20f, 0.08f) * scale, false);
-            PaintTexTiled(drawer, "Assets/Look/tex-kraft-corrugated.png", KraftDeep, 0.88f, new Vector2(2f, 1f), 0.8f, 0.06f, 0.55f);
-            var knob = Prim(PrimitiveType.Sphere, "Drawer Knob", drawer.transform.position + new Vector3(0f, 0f, 0.06f * scale), Vector3.one * 0.07f * scale, false);
-            PaintTex(knob, "Assets/Look/tex-felt-brown.png", FeltDark, 0.7f);
+            var leaf = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            float a = i * 0.65f;
+            float r = 0.22f + (i % 5) * 0.07f;
+            leaf.transform.position = pos + new Vector3(Mathf.Cos(a) * r, 0.12f + (i % 6) * 0.12f, Mathf.Sin(a) * r);
+            leaf.transform.localScale = Vector3.one * (0.18f + (i % 4) * 0.05f);
+            PaintTex(leaf, "Assets/Look/tex-yarn-flower.png", blooms[i % blooms.Length], 0.92f);
+            Object.DestroyImmediate(leaf.GetComponent<Collider>());
+            var center = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            center.name = "Bloom Center";
+            center.transform.position = leaf.transform.position + new Vector3(0f, 0.02f, 0.02f);
+            center.transform.localScale = Vector3.one * 0.05f;
+            PaintTex(center, "Assets/Look/tex-yarn-flower.png", Stitch, 0.5f); // k63
+            Object.DestroyImmediate(center.GetComponent<Collider>());
+            // crochet petal + yarn-loop ring on every bloom (amigurumi density)
+            for (int p = 0; p < 6; p++)
+            {
+                float pa = p * (Mathf.PI * 2f / 6f) + i * 0.1f;
+                var petal = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                petal.name = "Flower Petal";
+                petal.transform.position = leaf.transform.position + new Vector3(Mathf.Cos(pa), 0.02f, Mathf.Sin(pa)) * 0.085f;
+                petal.transform.localScale = Vector3.one * (0.065f + (p % 2) * 0.015f);
+                PaintTex(petal, "Assets/Look/tex-yarn-flower.png", blooms[(i + p) % blooms.Length], 0.9f);
+                Object.DestroyImmediate(petal.GetComponent<Collider>());
+            }
+            // k46: denser yarn-loop / crochet bumps on every bloom (amigurumi microstructure)
+            for (int p = 0; p < 8; p++)
+            {
+                float pa = p * (Mathf.PI * 2f / 8f) + i * 0.07f;
+                var yarnLoop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                yarnLoop.name = "Bloom Yarn Loop";
+                yarnLoop.transform.position = leaf.transform.position + new Vector3(Mathf.Cos(pa), 0.040f + (p % 2) * 0.012f, Mathf.Sin(pa)) * (0.048f + (p % 3) * 0.008f);
+                yarnLoop.transform.localScale = Vector3.one * (0.016f + (p % 3) * 0.005f);
+                PaintTex(yarnLoop, "Assets/Look/tex-yarn-flower.png", blooms[(i + 1) % blooms.Length], 0.88f);
+                Object.DestroyImmediate(yarnLoop.GetComponent<Collider>());
+            }
+            for (int p = 0; p < 7; p++)
+            {
+                float pa = p * 0.90f + 0.25f;
+                var bump = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                bump.name = "Bloom Crochet Bump";
+                bump.transform.position = leaf.transform.position + new Vector3(Mathf.Cos(pa), 0.055f, Mathf.Sin(pa)) * 0.032f;
+                bump.transform.localScale = Vector3.one * (0.011f + (p % 2) * 0.003f);
+                PaintTex(bump, "Assets/Look/tex-yarn-flower.png", blooms[(i + 2) % blooms.Length], 0.9f);
+                Object.DestroyImmediate(bump.GetComponent<Collider>());
+            }
         }
-        // set-03: a corrugated bowl hopper sitting on the box, crank handle out of the top
-        var bowl = Prim(PrimitiveType.Cylinder, "Grinder Hopper", basePos + Vector3.up * (1.12f * scale), new Vector3(0.52f, 0.10f, 0.52f) * scale, false);
-        PaintTexTiled(bowl, "Assets/Look/tex-kraft-corrugated.png", KraftDeep, 0.88f, new Vector2(3f, 1f), 0.8f, 0.06f, 0.55f);
-        var bowlRim = Prim(PrimitiveType.Sphere, "Grinder Hopper Rim", basePos + Vector3.up * (1.20f * scale), new Vector3(0.46f, 0.16f, 0.46f) * scale, false);
-        PaintTexTiled(bowlRim, "Assets/Look/tex-kraft-corrugated.png", Kraft, 0.88f, new Vector2(3f, 1f), 0.8f, 0.06f, 0.55f);
-        var crank = Prim(PrimitiveType.Cylinder, "Grinder Crank", basePos + new Vector3(0.26f, 1.26f, 0f) * scale, new Vector3(0.05f, 0.26f, 0.05f) * scale, false);
-        crank.transform.rotation = Quaternion.Euler(0f, 0f, 70f);
-        PaintTex(crank, "Assets/Look/tex-felt-brown.png", FeltDark, 0.75f);
-        var crankKnob = Prim(PrimitiveType.Sphere, "Crank Knob", basePos + new Vector3(0.50f, 1.34f, 0f) * scale, Vector3.one * 0.10f * scale, false);
-        PaintTex(crankKnob, "Assets/Look/tex-felt-brown.png", FeltDark, 0.7f);
     }
 
-    // ——— helpers ———
-
-    static GameObject Prim(PrimitiveType type, string name, Vector3 pos, Vector3 scale, bool keepCollider = true)
+    static void RoastBean(Vector3 pos, float scale, float yaw)
     {
-        var go = GameObject.CreatePrimitive(type);
-        go.name = name;
-        go.transform.position = pos;
-        go.transform.localScale = scale;
-        if (!keepCollider) Object.DestroyImmediate(go.GetComponent<Collider>());
-        go.isStatic = true;
-        return go;
+        var root = new GameObject("Roast Prop");
+        root.transform.position = pos;
+        root.transform.rotation = Quaternion.Euler(12f, yaw, 25f);
+        var l = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        l.name = "Roast Lobe";
+        l.transform.SetParent(root.transform, false);
+        l.transform.localPosition = new Vector3(-0.35f * scale, 0f, 0f);
+        l.transform.localScale = new Vector3(scale * 1.1f, scale * 0.85f, scale * 0.75f);
+        PaintTex(l, "Assets/Look/tex-felt-brown.png", FeltDark, 0.55f); // k63 Roast Lobe
+        Object.DestroyImmediate(l.GetComponent<Collider>());
+        var r = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        r.name = "Roast Lobe";
+        r.transform.SetParent(root.transform, false);
+        r.transform.localPosition = new Vector3(0.35f * scale, 0f, 0f);
+        r.transform.localScale = new Vector3(scale * 1.1f, scale * 0.85f, scale * 0.75f);
+        PaintTex(r, "Assets/Look/tex-felt-brown.png", FeltDark, 0.55f); // k63 Roast Lobe
+        Object.DestroyImmediate(r.GetComponent<Collider>());
+        var crease = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        crease.name = "Roast Crease";
+        crease.transform.SetParent(root.transform, false);
+        crease.transform.localPosition = Vector3.zero;
+        crease.transform.localScale = new Vector3(scale * 0.22f, scale * 0.55f, scale * 0.22f);
+        crease.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        PaintTex(crease, "Assets/Look/tex-felt-brown.png", new Color(0.18f, 0.10f, 0.06f), 0.7f); // k63 Roast Crease
+        Object.DestroyImmediate(crease.GetComponent<Collider>());
     }
 
-    static GameObject Child(Transform parent, PrimitiveType type, string name, Vector3 localPos, Vector3 scale)
+    static void MossBall(Vector3 pos, float scale)
     {
-        var go = GameObject.CreatePrimitive(type);
-        go.name = name;
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        Object.DestroyImmediate(go.GetComponent<Collider>());
-        return go;
+        var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        s.name = "Moss";
+        s.transform.position = pos;
+        s.transform.localScale = Vector3.one * scale;
+        PaintTex(s, "Assets/Look/tex-yarn-green.png", FeltPine, 0.94f);
+        Object.DestroyImmediate(s.GetComponent<Collider>());
+        // soft felt halo puffs
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * 0.85f;
+            var h = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            h.name = "Moss Halo";
+            h.transform.position = pos + new Vector3(Mathf.Cos(a), 0.35f + (i % 3) * 0.15f, Mathf.Sin(a)) * (scale * 0.45f);
+            h.transform.localScale = Vector3.one * (scale * (0.28f + (i % 3) * 0.06f));
+            PaintTex(h, "Assets/Look/tex-yarn-green.png", new Color(0.45f, 0.58f, 0.38f), 0.96f);
+            Object.DestroyImmediate(h.GetComponent<Collider>());
+        }
+    }
+
+    static void Sphere(string name, Vector3 pos, float scale, Color color)
+    {
+        var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        s.name = name;
+        s.transform.position = pos;
+        s.transform.localScale = Vector3.one * scale;
+        // k63: no flat Paint for interior props - LOOK kit felt/yarn
+        string tex = (color.g > color.r + 0.05f) ? "Assets/Look/tex-yarn-green.png" : "Assets/Look/tex-felt-brown.png";
+        PaintTex(s, tex, color, 0.9f);
+        Object.DestroyImmediate(s.GetComponent<Collider>());
     }
 
     static void Grip(GameObject go)
@@ -791,30 +1716,145 @@ public static class BuildEscapeScene
         };
     }
 
-    /// Shared FeltFiber material per (texture, tint, roughness). texPath null → clean white felt.
-    static void PaintTex(GameObject go, string texPath, Color tint, float roughness)
+
+
+
+    // k627+: SeamFelt/FeltFiber dark seam floor (ForwardBase + depth-tested CullOff ZWrite Offset) — NOT BeadUnlit Overlay Always sticker
+    static void PaintSeamFelt(GameObject go, Color baseMul, float bump, float sheen, float wrap)
     {
-        string path = texPath ?? "";
-        bool yarnish = path.Contains("yarn") || path.Contains("green") || path.Contains("flower");
-        float bump = 1.0f, sheen = 0.12f, wrap = 0.62f, tile = 1.2f;
-        if (path.Contains("burlap")) { bump = 1.4f; sheen = 0.08f; wrap = 0.70f; tile = 10f; }
-        else if (path.Contains("kraft")) { bump = 0.8f; sheen = 0.06f; wrap = 0.55f; tile = 7.5f; }
-        else if (yarnish) { bump = 1.2f; sheen = 0.16f; wrap = 0.66f; tile = 3.0f; }
-        else if (string.IsNullOrEmpty(path)) { bump = 0.8f; sheen = 0.14f; wrap = 0.66f; tile = 1f; }
-        PaintTexTiled(go, texPath, tint, roughness, new Vector2(tile, tile), bump, sheen, wrap);
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Look/imagine-bean-albedo.png");
+        var r = go.GetComponent<Renderer>();
+        var shader = Shader.Find("Escape/SeamFelt");
+        if (shader == null) shader = Shader.Find("Escape/FeltFiber");
+        if (shader == null) shader = Shader.Find("Diffuse");
+        var mat = new Material(shader);
+        if (tex != null)
+        {
+            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+        }
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", baseMul);
+        if (mat.HasProperty("_Color")) mat.color = baseMul;
+        if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", Mathf.Clamp(bump, 0.05f, 2.95f));
+        if (mat.HasProperty("_Sheen")) mat.SetFloat("_Sheen", sheen);
+        if (mat.HasProperty("_Wrap")) mat.SetFloat("_Wrap", wrap);
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.02f);
+        r.sharedMaterial = mat;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        r.receiveShadows = true;
     }
 
-    static void PaintTexTiled(GameObject go, string texPath, Color tint, float roughness, Vector2 tile, float bump, float sheen, float wrap)
+    static void PaintBean(GameObject go)
+    {
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Look/imagine-bean-albedo.png");
+        var r = go.GetComponent<Renderer>();
+        var shader = Shader.Find("Escape/FeltFiber");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+        var mat = new Material(shader);
+        if (tex != null)
+        {
+            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+        }
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(1.226f, 1.176f, 1.040f)); // k333 PaintBean body albedo LAND
+        if (mat.HasProperty("_Color")) mat.color = new Color(0.990f, 0.994f, 0.998f);
+        if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", 0.90f); // k494 PaintBean bump eyes-first LAND
+        if (mat.HasProperty("_Sheen")) mat.SetFloat("_Sheen", 0.213f); // k468 PaintBean sheen LAND
+        if (mat.HasProperty("_Wrap")) mat.SetFloat("_Wrap", 0.760f); // k328 PaintBean wrap LAND =k317
+        if (mat.HasProperty("_MidStripAmt")) mat.SetFloat("_MidStripAmt", 0.520f); // k664 mid-strip HELD
+        if (mat.HasProperty("_MidStripWidth")) mat.SetFloat("_MidStripWidth", 0.055f); // k664 mid-strip HELD
+        if (mat.HasProperty("_MidStripYPow")) mat.SetFloat("_MidStripYPow", 1.850f); // k664 mid-strip HELD
+        if (mat.HasProperty("_MidStripYBand")) mat.SetFloat("_MidStripYBand", 0.180f); // k664 mid-strip HELD
+        if (mat.HasProperty("_CleftNestAmt")) mat.SetFloat("_CleftNestAmt", 0.480f); // k674 CleftNestDark
+        if (mat.HasProperty("_CleftNestWidth")) mat.SetFloat("_CleftNestWidth", 0.038f); // k674 cleft w
+        if (mat.HasProperty("_WallSep")) mat.SetFloat("_WallSep", 0.102f); // k674 wall sep
+        if (mat.HasProperty("_WallWidth")) mat.SetFloat("_WallWidth", 0.046f); // k674 wall w
+        if (mat.HasProperty("_YarnNestAmt")) mat.SetFloat("_YarnNestAmt", 0.550f); // k674 yarn nest
+        if (mat.HasProperty("_YarnNestFreq")) mat.SetFloat("_YarnNestFreq", 14.000f); // k674 yarn freq
+        if (mat.HasProperty("_YarnNestWidth")) mat.SetFloat("_YarnNestWidth", 0.016f); // k674 yarn width
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.06f);
+        if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.06f);
+        r.sharedMaterial = mat;
+    }
+
+
+    static void PaintBead(GameObject go, Color color)
+    {
+        // k495: Escape/BeadUnlit is ForwardBase+Overlay+ZTest Always so cam.Render punches through FeltFiber.
+        // Unlit/Color was a silent no-draw on cam-k494. FeltFiber fallback still has ForwardBase.
+        var r = go.GetComponent<Renderer>();
+        var shader = Shader.Find("Escape/BeadUnlit");
+        if (shader == null)
+        {
+            AssetDatabase.ImportAsset("Assets/Look/BeadUnlit.shader");
+            shader = Shader.Find("Escape/BeadUnlit");
+        }
+        if (shader == null) shader = Shader.Find("Escape/FeltFiber");
+        if (shader == null) shader = Shader.Find("Diffuse");
+        var mat = new Material(shader);
+        if (mat.HasProperty("_Color")) mat.color = color;
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+        r.sharedMaterial = mat;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        r.receiveShadows = false;
+    }
+
+    static void Paint(GameObject go, Color color, float roughness)
     {
         var r = go.GetComponent<Renderer>();
-        if (r == null) return;
-        string path = texPath ?? "";
-        string key = CraftMesh.Key(path, tint, tile, bump, sheen, wrap, roughness, 0f);
-        var mat = CraftMesh.Shared(key, () =>
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+        var mat = new Material(shader);
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+        if (mat.HasProperty("_Color")) mat.color = color;
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 1f - roughness);
+        if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 1f - roughness);
+        r.sharedMaterial = mat;
+    }
+
+    static void PaintTex(GameObject go, string texPath, Color tint, float roughness)
+    {
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
+        var r = go.GetComponent<Renderer>();
+        var shader = Shader.Find("Escape/FeltFiber");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+        var mat = new Material(shader);
+        if (tex != null)
         {
-            var tex = string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            return CraftMesh.Felt(tex, tint, tile, bump, sheen, wrap, roughness);
-        });
+            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            if (mat.HasProperty("_BumpMap"))
+            {
+                string nPath = texPath.Contains("yarn") || texPath.Contains("green")
+                    ? "Assets/Look/tex-crochet-normal.png"
+                    : "Assets/Look/tex-felt-normal.png";
+                var n = AssetDatabase.LoadAssetAtPath<Texture2D>(nPath);
+                if (n == null) n = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Look/tex-felt-normal.png");
+                if (n != null) { mat.SetTexture("_BumpMap", n); mat.EnableKeyword("_NORMALMAP"); }
+            }
+        }
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+        if (mat.HasProperty("_Color")) mat.color = tint;
+        float bump = 1.55f;
+        if (texPath.Contains("burlap")) bump = 2.95f; // k54 coarser burlap
+        else if (texPath.Contains("kraft")) bump = 2.50f; // k47 kraft flute read
+        else if (texPath.Contains("yarn") || texPath.Contains("green") || texPath.Contains("flower")) bump = 1.95f;
+        if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", bump);
+        if (mat.HasProperty("_Sheen")) mat.SetFloat("_Sheen", texPath.Contains("yarn") || texPath.Contains("flower") ? 0.18f : 0.12f); // k46 crochet sheen
+        if (mat.HasProperty("_BaseMap"))
+        {
+            float tile = texPath.Contains("burlap") ? 9f : (texPath.Contains("kraft") ? 7f : (texPath.Contains("yarn") || texPath.Contains("green") || texPath.Contains("flower") ? 2.8f : 1f)); // k54 coarser burlap
+            mat.SetTextureScale("_BaseMap", new Vector2(tile, tile));
+        }
+        if (mat.HasProperty("_MainTex"))
+        {
+            float tile = texPath.Contains("burlap") ? 9f : (texPath.Contains("kraft") ? 7f : (texPath.Contains("yarn") || texPath.Contains("green") || texPath.Contains("flower") ? 2.8f : 1f)); // k54 coarser burlap
+            mat.SetTextureScale("_MainTex", new Vector2(tile, tile));
+        }
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 1f - roughness);
+        if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 1f - roughness);
         r.sharedMaterial = mat;
     }
 }

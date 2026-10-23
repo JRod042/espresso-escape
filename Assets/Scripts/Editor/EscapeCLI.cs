@@ -165,7 +165,7 @@ public static class EscapeCLI
         EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
         var cat = ScriptableObject.CreateInstance<LevelCatalog>();
         cat.RebuildAll();
-        var spawner = UnityEngine.Object.FindFirstObjectByType<LevelSetSpawner>();
+        var spawner = UnityEngine.Object.FindAnyObjectByType<LevelSetSpawner>();
         if (spawner == null) { Debug.LogError("PROOF_SMOKE_L1L3 FAIL no LevelSetSpawner"); return false; }
         int[] c = new int[3];
         for (int i = 0; i < 3; i++)

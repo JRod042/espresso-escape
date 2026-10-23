@@ -11,7 +11,7 @@ public static class LevelDensitySmokeL1L3
         EditorSceneManager.OpenScene("Assets/Escape.unity", OpenSceneMode.Single);
         var cat = ScriptableObject.CreateInstance<LevelCatalog>();
         cat.RebuildAll();
-        var spawner = Object.FindFirstObjectByType<LevelSetSpawner>();
+        var spawner = Object.FindAnyObjectByType<LevelSetSpawner>();
         if (spawner == null)
         {
             Debug.LogError("LEVEL_SMOKE_L1L3_FAIL no LevelSetSpawner");
