@@ -56,8 +56,8 @@ public static class FeltPine
             var shelfRenderer = shelf.GetComponent<MeshRenderer>();
             if (shelfRenderer != null)
             {
-                shelfRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                shelfRenderer.receiveShadows = false;
+                shelfRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                shelfRenderer.receiveShadows = true;
             }
             for (int k = 0; k < Scallops; k++)
             {
@@ -180,7 +180,7 @@ public static class FeltPine
     {
         string key = radius.ToString("0.###") + "_" + length.ToString("0.###") + "_" + seed;
         if (ConeMeshes.TryGetValue(key, out var cached) && cached != null) return cached;
-        int su = 12, sv = 10, cols = su + 1;
+        int su = 20, sv = 16, cols = su + 1;
         const int scaleRows = 4;
         const int scaleAround = 5;
         var v = new List<Vector3>(cols * (sv + 1));
@@ -189,10 +189,8 @@ public static class FeltPine
         for (int iv = 0; iv <= sv; iv++)
         {
             float fv = iv / (float)sv;
-            float taper = fv < 0.66f
-                ? Mathf.SmoothStep(0f, 1f, fv / 0.66f)
-                : Mathf.Lerp(1f, 0.72f, (fv - 0.66f) / 0.34f);
-            float y = Mathf.Lerp(length * 0.56f, -length * 0.44f, fv);
+            float taper = Mathf.Sin(fv * Mathf.PI) * Mathf.Lerp(0.86f, 1.08f, fv);
+            float y = Mathf.Lerp(length * 0.54f, -length * 0.46f, fv);
             for (int iu = 0; iu <= su; iu++)
             {
                 float phi = iu == su ? 0f : iu / (float)su * Mathf.PI * 2f;
@@ -201,8 +199,8 @@ public static class FeltPine
                 float around = phi / (Mathf.PI * 2f) * scaleAround + ((rowi & 1) == 0 ? 0f : 0.5f);
                 float aroundFrac = around - Mathf.Floor(around);
                 float cell = Mathf.Sin(Mathf.Clamp01(rowFrac) * Mathf.PI) * Mathf.Sin(Mathf.Clamp01(aroundFrac) * Mathf.PI);
-                float band = Mathf.Clamp01((fv - 0.1f) / 0.16f) * Mathf.Clamp01((0.96f - fv) / 0.16f);
-                float bump = radius * 0.28f * Mathf.Pow(Mathf.Clamp01(cell), 0.40f) * band;
+                float band = Mathf.Sin(fv * Mathf.PI);
+                float bump = radius * 0.14f * Mathf.Clamp01(cell) * band;
                 float r = radius * taper + bump;
                 v.Add(new Vector3(Mathf.Cos(phi) * r, y, Mathf.Sin(phi) * r));
                 uv.Add(new Vector2(iu / (float)su, 1f - fv));

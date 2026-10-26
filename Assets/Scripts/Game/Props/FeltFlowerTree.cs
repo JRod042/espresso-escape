@@ -8,16 +8,16 @@ public static class FeltFlowerTree
     // tex-yarn-fiber mean is about (148, 116, 82). These tints land on the clip's wool:
     // orange (210, 97, 41), crimson (193, 21, 16), deep red (141, 14, 11),
     // beige centers (181, 135, 100), trunk (119, 70, 39).
-    static readonly Color OrangeTint = new Color(1.42f, 0.84f, 0.50f);
-    static readonly Color OrangeFlat = new Color(0.90f, 0.38f, 0.14f);
-    static readonly Color RedTint = new Color(1.30f, 0.18f, 0.20f);
-    static readonly Color RedFlat = new Color(0.75f, 0.08f, 0.06f);
-    static readonly Color DeepTint = new Color(0.95f, 0.12f, 0.14f);
-    static readonly Color DeepFlat = new Color(0.55f, 0.05f, 0.045f);
-    static readonly Color BeigeTint = new Color(1.22f, 1.16f, 1.22f);
-    static readonly Color BeigeFlat = new Color(0.71f, 0.53f, 0.39f);
-    static readonly Color TrunkTint = new Color(0.80f, 0.60f, 0.48f);
-    static readonly Color TrunkFlat = new Color(0.46f, 0.27f, 0.15f);
+    static readonly Color OrangeTint = new Color(0.98f, 0.58f, 0.30f);
+    static readonly Color OrangeFlat = new Color(0.90f, 0.40f, 0.15f);
+    static readonly Color RedTint = new Color(0.94f, 0.22f, 0.20f);
+    static readonly Color RedFlat = new Color(0.78f, 0.10f, 0.08f);
+    static readonly Color DeepTint = new Color(0.78f, 0.15f, 0.15f);
+    static readonly Color DeepFlat = new Color(0.58f, 0.06f, 0.05f);
+    static readonly Color BeigeTint = new Color(0.94f, 0.84f, 0.70f);
+    static readonly Color BeigeFlat = new Color(0.74f, 0.56f, 0.40f);
+    static readonly Color TrunkTint = new Color(0.82f, 0.64f, 0.48f);
+    static readonly Color TrunkFlat = new Color(0.48f, 0.30f, 0.17f);
 
     static Material _orange, _red, _deep, _beige, _trunk;
     static Mesh _petal, _bole;
@@ -34,41 +34,42 @@ public static class FeltFlowerTree
         var trunk = Body(host, "Flower Trunk", Vector3.zero, Quaternion.identity, TrunkMesh(), TrunkMat());
         NoShadow(trunk);
 
-        Vector3 heart = new Vector3(0f, 0.80f, 0f);
-        const float shell = 0.50f;
+        Vector3 heart = new Vector3(0f, 0.82f, 0f);
+        const float shell = 0.45f;
 
-        for (int i = 0; i < 9; i++)
+        // Solid inner wool core so the bouquet never shows gaps through to the background
+        Fill(host, heart + new Vector3(0f, -0.02f, 0f), 0.36f, DeepMat(), 0);
+        for (int i = 0; i < 12; i++)
         {
-            Vector3 dir = SphereDir(i, 9);
-            if (dir.y < 0f) dir.y = -dir.y * 0.35f;
+            Vector3 dir = SphereDir(i, 12);
+            if (dir.y < -0.35f) dir.y = -0.35f;
             dir.Normalize();
-            Fill(host, heart + dir * (shell * 0.36f), 0.13f + (i % 3) * 0.012f,
-                i % 4 == 0 ? OrangeMat() : DeepMat(), i);
+            Fill(host, heart + dir * (shell * 0.56f), 0.155f + (i % 3) * 0.015f,
+                (i % 3 == 0) ? OrangeMat() : ((i % 2 == 0) ? RedMat() : DeepMat()), 2 + i);
         }
 
-        const int slots = 34;
-        for (int i = 0; i < slots; i++)
+        // Dense dome of plump 8-petal crocheted daisies (crop-flower-tree.jpg)
+        const int daisySlots = 28;
+        for (int i = 0; i < daisySlots; i++)
         {
-            Vector3 dir = SphereDir(i, slots);
-            if (dir.y < -0.58f) continue;
+            Vector3 dir = SphereDir(i, daisySlots);
+            if (dir.y < -0.46f) continue;
             Vector3 pos = OnBouquet(dir, heart, shell);
-            if ((i % 5) == 3)
-            {
-                Fill(host, pos, 0.095f + (i % 3) * 0.012f, (i % 2) == 0 ? DeepMat() : RedMat(), 20 + i);
-                continue;
-            }
-            float size = 0.94f + ((i * 3) % 5) * 0.04f;
-            if (dir.y < -0.2f) size *= 0.88f;
-            Daisy(host, pos, dir, (i % 2) == 0 ? OrangeMat() : RedMat(), i, size);
+            float size = 1.02f + ((i * 3) % 4) * 0.045f;
+            if (dir.y < -0.15f) size *= 0.90f;
+            bool isOrange = ((i + (dir.z < 0f ? 1 : 0)) % 2) == 0;
+            Daisy(host, pos, dir, isOrange ? OrangeMat() : RedMat(), i, size);
         }
 
-        for (int i = 0; i < 16; i++)
+        // Plump yarn berry balls tucked into every interstitial gap between daisies
+        const int berrySlots = 32;
+        for (int i = 0; i < berrySlots; i++)
         {
-            Vector3 dir = SphereDir(i * 2 + 1, 32);
-            if (dir.y < -0.30f) continue;
-            Vector3 pos = OnBouquet(dir, heart, shell * (0.78f + (i % 3) * 0.04f));
-            Material mat = (i % 7) == 0 ? OrangeMat() : ((i % 2) == 0 ? DeepMat() : RedMat());
-            Fill(host, pos, 0.046f + (i % 4) * 0.008f, mat, 50 + (i % 6));
+            Vector3 dir = SphereDirOffset(i, berrySlots, 1.18f);
+            if (dir.y < -0.42f) continue;
+            Vector3 pos = OnBouquet(dir, heart, shell * (0.88f + (i % 3) * 0.035f));
+            Material mat = (i % 4 == 0) ? OrangeMat() : ((i % 2 == 0) ? RedMat() : DeepMat());
+            Fill(host, pos, 0.072f + (i % 3) * 0.012f, mat, 40 + i);
         }
 
         return tree;
@@ -78,19 +79,27 @@ public static class FeltFlowerTree
     static Vector3 OnBouquet(Vector3 dir, Vector3 heart, float shell)
     {
         float tuck = 1f;
-        if (dir.y < -0.38f)
+        if (dir.y < -0.25f)
         {
-            float t = Mathf.Clamp01((-0.38f - dir.y) / 0.28f);
-            tuck = Mathf.Lerp(1f, 0.62f, t * t);
+            float t = Mathf.Clamp01((-0.25f - dir.y) / 0.30f);
+            tuck = Mathf.Lerp(1f, 0.68f, t * t);
         }
-        return heart + new Vector3(dir.x * shell * tuck, dir.y * shell, dir.z * shell * tuck);
+        return heart + new Vector3(dir.x * shell * tuck, dir.y * shell * 0.96f, dir.z * shell * tuck);
     }
 
     static Vector3 SphereDir(int i, int count)
     {
-        float y = 1f - (i / (float)(count - 1)) * 2f;
+        float y = 1f - ((i + 0.5f) / count) * 2f;
         float ring = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
         float phi = i * 2.399963f;
+        return new Vector3(Mathf.Cos(phi) * ring, y, Mathf.Sin(phi) * ring).normalized;
+    }
+
+    static Vector3 SphereDirOffset(int i, int count, float phaseOffset)
+    {
+        float y = 1f - ((i + 0.5f) / count) * 2f;
+        float ring = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
+        float phi = i * 2.399963f + phaseOffset;
         return new Vector3(Mathf.Cos(phi) * ring, y, Mathf.Sin(phi) * ring).normalized;
     }
 
@@ -109,34 +118,34 @@ public static class FeltFlowerTree
         {
             float a = p * Mathf.PI * 2f / n;
             var radial = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
-            var spin = Quaternion.FromToRotation(Vector3.up, radial) * Quaternion.Euler(16f, 0f, 0f);
-            NoShadow(Body(flower.transform, "Daisy Petal", radial * 0.016f, spin, PetalMesh(), petal));
+            var spin = Quaternion.FromToRotation(Vector3.up, radial) * Quaternion.Euler(12f, 0f, 0f);
+            NoShadow(Body(flower.transform, "Daisy Petal", radial * 0.014f, spin, PetalMesh(), petal));
         }
 
-        NoShadow(Body(flower.transform, "Daisy Center", new Vector3(0f, 0f, 0.02f), Quaternion.identity,
-            CraftMesh.Pompom(0.020f, 0.35f, 8, 6, 4), BeigeMat()));
+        NoShadow(Body(flower.transform, "Daisy Center", new Vector3(0f, 0f, 0.022f), Quaternion.identity,
+            CraftMesh.Pompom(0.022f, 0.28f, 8, 6, 4), BeigeMat()));
         for (int c = 0; c < 6; c++)
         {
             float a = c * Mathf.PI * 2f / 6f + 0.4f;
-            var nub = new Vector3(Mathf.Cos(a) * 0.026f, Mathf.Sin(a) * 0.026f, 0.026f);
+            var nub = new Vector3(Mathf.Cos(a) * 0.024f, Mathf.Sin(a) * 0.024f, 0.026f);
             NoShadow(Body(flower.transform, "Daisy Center", nub, Quaternion.identity,
-                CraftMesh.Pompom(0.011f, 0.42f, 8, 6, 5 + (c % 3)), BeigeMat()));
+                CraftMesh.Pompom(0.013f, 0.32f, 8, 6, 5 + (c % 3)), BeigeMat()));
         }
     }
 
     static void Fill(Transform host, Vector3 pos, float radius, Material mat, int seed)
     {
         NoShadow(Body(host, "Bouquet Fill", pos, Quaternion.identity,
-            CraftMesh.Pompom(radius, 0.20f, 10, 8, seed), mat));
+            CraftMesh.Pompom(radius, 0.16f, 10, 8, seed), mat));
     }
 
-    /// Chubby yarn petal. Base at the origin, tip toward +y, cupped a little toward +z.
+    /// Plump crocheted yarn petal (crop-flower-tree.jpg). Base at origin, rounded tip toward +y, cupped slightly toward +z.
     static Mesh PetalMesh()
     {
         if (_petal != null) return _petal;
-        const int along = 8;
+        const int along = 9;
         const int around = 12;
-        const float length = 0.145f;
+        const float length = 0.148f;
         int cols = around + 1;
         var v = new List<Vector3>();
         var uv = new List<Vector2>();
@@ -144,16 +153,16 @@ public static class FeltFlowerTree
         for (int k = 0; k <= along; k++)
         {
             float u = k / (float)along;
-            float belly = Mathf.Sin(Mathf.PI * Mathf.Pow(u, 0.62f));
-            float width = Mathf.Lerp(0.44f, 1f, belly);
-            width *= Mathf.Lerp(1f, 0.30f, Mathf.SmoothStep(0.72f, 1f, u));
+            float belly = Mathf.Sin(Mathf.PI * Mathf.Pow(u, 0.58f));
+            float width = Mathf.Lerp(0.50f, 1f, belly);
+            width *= Mathf.Lerp(1f, 0.48f, Mathf.SmoothStep(0.76f, 1f, u));
             float y = u * length;
-            float cup = 0.016f * u * u;
+            float cup = 0.014f * u * u;
             for (int i = 0; i <= around; i++)
             {
                 float a = i / (float)around * Mathf.PI * 2f;
-                float wob = 1f + 0.04f * Mathf.Sin(a * 3f + u * 11f);
-                v.Add(new Vector3(Mathf.Cos(a) * 0.050f * width * wob, y, Mathf.Sin(a) * 0.020f * width * wob + cup));
+                float wob = 1f + 0.03f * Mathf.Sin(a * 3f + u * 9f);
+                v.Add(new Vector3(Mathf.Cos(a) * 0.062f * width * wob, y, Mathf.Sin(a) * 0.034f * width * wob + cup));
                 uv.Add(new Vector2(i / (float)around, u));
             }
         }
@@ -209,13 +218,13 @@ public static class FeltFlowerTree
         {
             float u = k / (float)(samples - 1);
             float y = u * 0.62f;
-            float neck = Mathf.Lerp(0.158f, 0.122f, Mathf.SmoothStep(0f, 0.58f, u));
-            float flare = Mathf.SmoothStep(0.52f, 1f, u);
-            float r = Mathf.Lerp(neck, 0.28f, flare * flare);
+            float neck = Mathf.Lerp(0.145f, 0.105f, Mathf.SmoothStep(0f, 0.62f, u));
+            float flare = Mathf.SmoothStep(0.62f, 1f, u);
+            float r = Mathf.Lerp(neck, 0.155f, flare * flare);
             for (int i = 0; i <= seg; i++)
             {
                 float a = i / (float)seg * Mathf.PI * 2f;
-                float rib = 1f + 0.055f * Mathf.Sin(a * 10f) + 0.02f * Mathf.Sin(a * 3f + u * 15f);
+                float rib = 1f + 0.05f * Mathf.Sin(a * 12f) + 0.015f * Mathf.Sin(a * 3f + u * 12f);
                 v.Add(new Vector3(Mathf.Cos(a) * r * rib, y, Mathf.Sin(a) * r * rib));
                 uv.Add(new Vector2(i / (float)seg, u));
             }

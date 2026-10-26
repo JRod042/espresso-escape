@@ -12,17 +12,18 @@ public static class FeltBeanSurface
     const string ShellName = "Fuzz Shell";
 
     // Metres. Short even nap: 0.055 read as thorns, and the clip's halo is only a soft edge.
-    const float BodyOutline = 0.026f;
-    const float BodyFace = 0.011f;
-    const float LimbOutline = 0.010f;
+    const float BodyOutline = 0.018f;
+    const float BodyFace = 0.006f;
+    const float LimbOutline = 0.008f;
     // play139 beads are about a sixth of the body width, with a small catchlight.
-    const float EyeDiameter = 0.090f;
+    const float EyeDiameter = 0.082f;
 
-    // Mid brown felt. White (1,1,1) bleached the wool whenever the source tint was missing.
-    static readonly Color WoolBrown = new Color(0.62f, 0.40f, 0.26f);
-    static readonly Color SeamTan = new Color(0.93f, 0.84f, 0.66f);
+    // Mid brown felt over tex-felt-brown.png (always < 1 so key lights never bleach the wool).
+    static readonly Color WoolBrown = new Color(0.76f, 0.58f, 0.44f);
+    static readonly Color SeamTan = new Color(0.90f, 0.82f, 0.66f);
     static readonly Color EyeBlack = new Color(0.015f, 0.012f, 0.010f);
     static readonly Color Catchlight = new Color(0.98f, 0.97f, 0.94f);
+    static readonly Vector3 TuckedJunctionScale = new Vector3(0.24f, 0.18f, 0.22f);
 
     const float SeamH = 0.78f, SeamWR = 0.80f, SeamDR = 0.72f, SeamTop = 0.11f, SeamFlat = 0.07f;
 
@@ -33,6 +34,7 @@ public static class FeltBeanSurface
     {
         if (root == null) return;
         Transform body = EnsureBody(root.transform);
+        EnsurePivotedLimbs(root.transform);
         QuietFillers(root.transform);
         DressWool(root.transform, body);
 
@@ -48,6 +50,9 @@ public static class FeltBeanSurface
         RaiseSeam(root.transform, body);
         EnlargeEyes(root.transform, body, verts, normals);
         ClosedSmile(root.transform, body, verts, normals);
+
+        var anim = root.GetComponent<BeanAnimator>();
+        if (anim != null) anim.SnapIdle();
     }
 
     static void DressWool(Transform root, Transform body)
@@ -56,33 +61,22 @@ public static class FeltBeanSurface
         for (int i = 0; i < renderers.Length; i++)
         {
             var renderer = renderers[i];
-            if (renderer == null || renderer.gameObject.name == ShellName) continue;
+            if (renderer == null || !renderer.enabled || renderer.gameObject.name == ShellName) continue;
             string name = renderer.gameObject.name;
             bool isBody = body != null && renderer.transform == body;
-            if (!isBody && name != "Arm" && name != "Foot") continue;
+            bool isLimb = name == "Arm" || name == "Arm Mitt" || name == "Leg" || name == "Foot";
+            bool isJunction = name == "Arm Junction" || name == "Leg Junction";
+            if (!isBody && !isLimb && !isJunction) continue;
 
             TuneWool(renderer);
-            AddShell(renderer.gameObject, isBody ? BodyOutline : LimbOutline, isBody ? BodyFace : LimbOutline, isBody);
+            if (isBody || isLimb)
+                AddShell(renderer.gameObject, isBody ? BodyOutline : LimbOutline, isBody ? BodyFace : LimbOutline, isBody);
         }
     }
 
     static void TuneWool(MeshRenderer renderer)
     {
-        var material = renderer.sharedMaterial;
-        if (material == null || (!material.HasProperty("_BumpScale") && !material.HasProperty("_BaseColor")))
-        {
-            renderer.sharedMaterial = WoolMaterial(material);
-            return;
-        }
-
-        // rotate-bean.mp4 wool is matte. The rim stays soft and the cord stays the light yarn.
-        SetFloat(material, "_BumpScale", 2.2f);
-        SetFloat(material, "_Sheen", 0.12f);
-        SetFloat(material, "_Wrap", 0.90f);
-        SetFloat(material, "_Smoothness", 0.02f);
-        SetFloat(material, "_Glossiness", 0.02f);
-        SetFloat(material, "_FiberAmt", 0.20f);
-        SetFloat(material, "_SeamAmt", 0f);
+        renderer.sharedMaterial = BodyWoolMaterial();
     }
 
     /// The turn's seam is one cream cord on the front and the back. The portrait dashes stay off.
@@ -151,12 +145,12 @@ public static class FeltBeanSurface
         for (int i = 0; i <= 34; i++)
         {
             float lat = Mathf.Lerp(-46f, 88f, i / 34f);
-            PushCenter(pts, SurfacePoint(lat, 0f, 0.014f));
+            PushCenter(pts, SurfacePoint(lat, 0f, 0.009f));
         }
         for (int i = 0; i <= 36; i++)
         {
             float lat = Mathf.Lerp(88f, -50f, i / 36f);
-            float lift = Mathf.Lerp(0.016f, 0.030f, i / 36f);
+            float lift = Mathf.Lerp(0.012f, 0.022f, i / 36f);
             PushCenter(pts, SurfacePoint(lat, 180f, lift));
         }
         return pts;
@@ -165,7 +159,7 @@ public static class FeltBeanSurface
     static List<Vector3> Ply(List<Vector3> centers, float phase)
     {
         var pts = new List<Vector3>(centers.Count);
-        const float orbit = 0.0062f;
+        const float orbit = 0.0032f;
         for (int i = 0; i < centers.Count; i++)
         {
             Vector3 prev = centers[Mathf.Max(0, i - 1)];
@@ -190,8 +184,8 @@ public static class FeltBeanSurface
         var v = new List<Vector3>(centers.Count * 16);
         var uv = new List<Vector2>(centers.Count * 16);
         var tris = new List<int>(centers.Count * 36);
-        AppendTube(v, uv, tris, Ply(centers, 0f), 0.0068f);
-        AppendTube(v, uv, tris, Ply(centers, Mathf.PI), 0.0068f);
+        AppendTube(v, uv, tris, Ply(centers, 0f), 0.0044f);
+        AppendTube(v, uv, tris, Ply(centers, Mathf.PI), 0.0044f);
         var mesh = new Mesh { name = "Yarn Cord" };
         mesh.SetVertices(v);
         mesh.SetUVs(0, uv);
@@ -610,30 +604,32 @@ public static class FeltBeanSurface
         else mesh.normals = normals;
     }
 
+    static Material BodyWoolMaterial()
+    {
+        return CraftMesh.Shared("bean-wool-body", () =>
+        {
+            var tex = Resources.Load<Texture2D>("Look/tex-felt-brown");
+            var material = CraftMesh.Felt(tex, WoolBrown, new Vector2(2.2f, 2.2f), 1.8f, 0.12f, 0.86f, 0.98f, 0f);
+            SetFloat(material, "_FiberAmt", 0.12f);
+            SetFloat(material, "_SeamAmt", 0f);
+            return material;
+        });
+    }
+
     static Material WoolMaterial(Material source)
     {
-        Color tint = EvenBrown(source);
-        Texture2D tex = null;
-        if (source != null)
-        {
-            if (source.HasProperty("_BaseMap")) tex = source.GetTexture("_BaseMap") as Texture2D;
-            if (tex == null && source.HasProperty("_MainTex")) tex = source.GetTexture("_MainTex") as Texture2D;
-        }
-        if (tex == null) tex = Resources.Load<Texture2D>("Look/tex-felt-brown");
-
-        Texture2D captured = tex;
-        Color capturedTint = tint;
         Color halo = new Color(
-            Mathf.Clamp(capturedTint.r * 1.06f, 0f, 1.8f),
-            Mathf.Clamp(capturedTint.g * 1.04f, 0f, 1.8f),
-            Mathf.Clamp(capturedTint.b * 1.02f, 0f, 1.8f),
+            Mathf.Clamp(WoolBrown.r * 1.04f, 0f, 0.88f),
+            Mathf.Clamp(WoolBrown.g * 1.03f, 0f, 0.88f),
+            Mathf.Clamp(WoolBrown.b * 1.02f, 0f, 0.88f),
             1f);
         return CraftMesh.Shared("bean-wool-halo", () =>
         {
-            var material = CraftMesh.Felt(captured, halo, new Vector2(1.8f, 1.8f), 2.8f, 0.40f, 0.92f, 0.98f, 0f);
+            var tex = Resources.Load<Texture2D>("Look/tex-felt-brown");
+            var material = CraftMesh.Felt(tex, halo, new Vector2(1.8f, 1.8f), 2.2f, 0.22f, 0.88f, 0.98f, 0f);
             var soft = Shader.Find("Escape/PineWool");
             if (soft != null) material.shader = soft;
-            SetFloat(material, "_FiberAmt", 0.16f);
+            SetFloat(material, "_FiberAmt", 0.12f);
             SetFloat(material, "_SeamAmt", 0f);
             return material;
         });
@@ -661,22 +657,6 @@ public static class FeltBeanSurface
         });
     }
 
-    static Color EvenBrown(Material source)
-    {
-        Color color = WoolBrown;
-        if (source != null && source.HasProperty("_BaseColor")) color = source.GetColor("_BaseColor");
-        else if (source != null && source.HasProperty("_Color")) color = source.color;
-
-        color.a = 1f;
-        float peak = Mathf.Max(color.r, Mathf.Max(color.g, color.b));
-        if (peak < 0.2f || peak > 0.92f) return WoolBrown;
-        if (color.r > color.g + 0.14f && color.b > color.g + 0.02f) return WoolBrown;
-        color.r = Mathf.Clamp(color.r, 0f, 1f);
-        color.g = Mathf.Clamp(color.g, 0f, 1f);
-        color.b = Mathf.Clamp(color.b, 0f, 1f);
-        return color;
-    }
-
     static void SetFloat(Material material, string property, float value)
     {
         if (material != null && material.HasProperty(property)) material.SetFloat(property, value);
@@ -685,12 +665,6 @@ public static class FeltBeanSurface
     static Transform EnsureBody(Transform root)
     {
         Transform body = root.Find("Bean Body");
-        if (body != null)
-        {
-            var ready = body.GetComponent<MeshFilter>();
-            if (ready != null && ready.sharedMesh != null) return body;
-        }
-
         if (body == null)
         {
             var go = new GameObject("Bean Body");
@@ -706,50 +680,135 @@ public static class FeltBeanSurface
 
         var renderer = body.GetComponent<MeshRenderer>();
         if (renderer == null) renderer = body.gameObject.AddComponent<MeshRenderer>();
-        if (renderer.sharedMaterial == null)
-        {
-            Material donor = DonorMaterial(root);
-            renderer.sharedMaterial = donor != null ? new Material(donor) : WoolMaterial(null);
-        }
+        renderer.sharedMaterial = BodyWoolMaterial();
         renderer.enabled = true;
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         renderer.receiveShadows = true;
         return body;
     }
 
-    static Material DonorMaterial(Transform root)
+    /// Ensures short rounded arms and legs exist on animated pivots with tucked junctions.
+    static void EnsurePivotedLimbs(Transform root)
+    {
+        var mat = BodyWoolMaterial();
+        if (root.Find("Arm Pivot L") == null) BuildArm(root, -1, mat);
+        if (root.Find("Arm Pivot R") == null) BuildArm(root, 1, mat);
+        if (root.Find("Leg Pivot L") == null) BuildLeg(root, -1, mat);
+        if (root.Find("Leg Pivot R") == null) BuildLeg(root, 1, mat);
+
+        var all = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < all.Length; i++)
+        {
+            var t = all[i];
+            if (t == null || t.parent == root) continue;
+            if (t.name == "Arm Junction" || t.name == "Leg Junction")
+            {
+                t.localPosition = new Vector3(0f, -0.92f, 0f);
+                t.localScale = TuckedJunctionScale;
+            }
+        }
+    }
+
+    static void BuildArm(Transform parent, int side, Material mat)
+    {
+        bool left = side < 0;
+        var pivot = new GameObject(left ? "Arm Pivot L" : "Arm Pivot R");
+        pivot.transform.SetParent(parent, false);
+        pivot.transform.localPosition = new Vector3(side * 0.255f, 0.02f, 0.01f);
+        pivot.transform.localRotation = Quaternion.identity;
+
+        var arm = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        arm.name = "Arm";
+        arm.transform.SetParent(pivot.transform, false);
+        arm.transform.localRotation = Quaternion.Euler(left ? 6f : -4f, 0f, -side * 160f);
+        arm.transform.localPosition = arm.transform.localRotation * Vector3.up * 0.115f;
+        arm.transform.localScale = new Vector3(0.105f, 0.13f, 0.105f);
+        StripCol(arm);
+        arm.GetComponent<Renderer>().sharedMaterial = mat;
+
+        BuildTuckedJunction(arm.transform, "Arm Junction", mat);
+
+        var mitt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        mitt.name = "Arm Mitt";
+        mitt.transform.SetParent(arm.transform, false);
+        mitt.transform.localPosition = new Vector3(0f, 0.95f, 0f);
+        mitt.transform.localScale = new Vector3(1.22f, 0.92f, 1.18f);
+        StripCol(mitt);
+        mitt.GetComponent<Renderer>().sharedMaterial = mat;
+    }
+
+    static void BuildLeg(Transform parent, int side, Material mat)
+    {
+        bool left = side < 0;
+        var pivot = new GameObject(left ? "Leg Pivot L" : "Leg Pivot R");
+        pivot.transform.SetParent(parent, false);
+        pivot.transform.localPosition = new Vector3(side * 0.12f, -0.30f, 0.02f);
+        pivot.transform.localRotation = Quaternion.identity;
+
+        var leg = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        leg.name = "Leg";
+        leg.transform.SetParent(pivot.transform, false);
+        leg.transform.localRotation = Quaternion.Euler(0f, 0f, side * 4f);
+        leg.transform.localPosition = new Vector3(0f, -0.065f, 0f);
+        leg.transform.localScale = new Vector3(0.12f, 0.085f, 0.12f);
+        StripCol(leg);
+        leg.GetComponent<Renderer>().sharedMaterial = mat;
+
+        BuildTuckedJunction(leg.transform, "Leg Junction", mat);
+
+        var foot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        foot.name = "Foot";
+        foot.transform.SetParent(pivot.transform, false);
+        foot.transform.localPosition = new Vector3(side * 0.005f, -0.115f, 0.03f);
+        foot.transform.localScale = new Vector3(0.15f, 0.095f, 0.17f);
+        StripCol(foot);
+        foot.GetComponent<Renderer>().sharedMaterial = mat;
+    }
+
+    static void BuildTuckedJunction(Transform limb, string name, Material mat)
+    {
+        var j = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        j.name = name;
+        j.transform.SetParent(limb, false);
+        j.transform.localPosition = new Vector3(0f, -0.92f, 0f);
+        j.transform.localScale = TuckedJunctionScale;
+        StripCol(j);
+        CraftMesh.UseLowSphere(j);
+        var r = j.GetComponent<Renderer>();
+        r.sharedMaterial = mat;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    }
+
+    static void StripCol(GameObject go)
+    {
+        var c = go.GetComponent<Collider>();
+        if (c == null) return;
+        if (Application.isPlaying) Object.Destroy(c);
+        else Object.DestroyImmediate(c);
+    }
+
+    /// The clip is one oval. Old cleft lobes, trench, flecks, dashes, and unpivoted limbs/junctions stop drawing.
+    static void QuietFillers(Transform root)
     {
         var renderers = root.GetComponentsInChildren<MeshRenderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
-            var renderer = renderers[i];
-            if (renderer == null || renderer.sharedMaterial == null) continue;
-            string name = renderer.gameObject.name;
-            if (name == "Bean Body" || name == ShellName || name == "Yarn Seam") continue;
-            if (name == "Eye" || name == "Eye Highlight" || name == "Dash Stitch" || name == "Smile") continue;
-            if (name.StartsWith("Arm") || name.StartsWith("Foot") || name.StartsWith("Leg")) continue;
-            return renderer.sharedMaterial;
-        }
-        return null;
-    }
-
-    /// The clip is one oval. The old cleft lobes, trench, and flecks stay in the scene and stop drawing.
-    static void QuietFillers(Transform root)
-    {
-        for (int i = 0; i < root.childCount; i++)
-        {
-            Transform child = root.GetChild(i);
-            if (!IsFiller(child.name)) continue;
-            var renderers = child.GetComponentsInChildren<MeshRenderer>(true);
-            for (int r = 0; r < renderers.Length; r++)
-                if (renderers[r] != null) renderers[r].enabled = false;
+            var r = renderers[i];
+            if (r == null) continue;
+            Transform t = r.transform;
+            string n = t.name;
+            if (IsFiller(n, t.parent == root))
+                r.enabled = false;
         }
     }
 
-    static bool IsFiller(string name)
+    static bool IsFiller(string name, bool directRootChild)
     {
         if (name == "Bean Body" || name == "Smile" || name == ShellName || name == "Yarn Seam") return false;
-        if (name == "Eye" || name == "Eye Highlight" || name == "Dash Stitch") return false;
+        if (name == "Eye" || name == "Eye Highlight") return false;
+        if (name == "Dash Stitch" || name.Contains("Fleck") || name.Contains("Stub ")) return true;
+        if (name == "Arm Nap" || name == "Leg Nap" || name.EndsWith("Mitt Lobe") || name.EndsWith("SoftCap")) return true;
+        if (directRootChild && (name == "Arm" || name == "Foot" || name == "Arm Junction" || name == "Leg Junction")) return true;
         if (name.StartsWith("Arm") || name.StartsWith("Foot") || name.StartsWith("Leg")) return false;
         if (name.StartsWith("Bean ") || name.StartsWith("Felt ") || name.StartsWith("Face ")) return true;
         if (name.StartsWith("Pad ") || name.StartsWith("Cheek ") || name.StartsWith("Crown ")) return true;

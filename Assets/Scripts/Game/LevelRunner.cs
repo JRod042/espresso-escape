@@ -13,9 +13,9 @@ public class LevelRunner : MonoBehaviour
     public LevelCatalog.LevelDef active;
     public float fallResetY = -3f;
 
-    /// Start apron built by BuildEscapeScene spans x ∈ [-5, 3]; level ground starts here.
+    /// Start apron built by BuildEscapeScene spans x ∈ [-9, 3]; level ground starts here.
     public const float ApronEnd = 3f;
-    public const float LaneDepth = 6f; // ground depth (z) so background and foreground dressing have floor under them
+    public const float LaneDepth = 7.5f; // ground depth (z) so background and foreground dressing have floor under them
 
     /// L2 Kraft Bridge (gen-2d7dcad9): the arch sits ON the burlap, on the run lane.
     /// Deck span is BridgeX0 − plank/2 … BridgeX0+BridgeLen+plank/2 (about 3.97–6.53), inside every level's first solid block.
@@ -300,7 +300,7 @@ public class LevelRunner : MonoBehaviour
         go.transform.localScale = new Vector3(len, thick, 1.7f);
         go.isStatic = true;
         go.GetComponent<Renderer>().sharedMaterial = CraftMesh.Shared("ground-burlap-mat", () =>
-            CraftMesh.Felt(tex, Color.white, new Vector2(2.4f, 3f), 0.35f, 0.02f, 0.70f, 0.98f)); // tex-burlap is already 174,135,90
+            CraftMesh.Felt(tex, Color.white, new Vector2(2.7f, 2.7f), 0f, 0.02f, 0.70f, 0.98f)); // square weave, fuzz off
         go.GetComponent<Collider>().material = GripMat();
     }
 
@@ -314,10 +314,11 @@ public class LevelRunner : MonoBehaviour
         go.transform.localScale = new Vector3(len, 0.16f, LaneDepth);
         go.isStatic = true;
         var r = go.GetComponent<Renderer>();
-        // 285.jpg / library-wide-set-1.jpg: light tan grid. Gap edges unchanged. Same tex-burlap.png.
-        float tile = Mathf.Max(1f, Mathf.Round(len * 1.6f));
-        r.sharedMaterial = CraftMesh.Shared($"ground-burlap-tan-{tile}", () =>
-            CraftMesh.Felt(tex, Color.white, new Vector2(tile, LaneDepth * 1.6f), 0.35f, 0.02f, 0.70f, 0.98f));
+        // rotate-floor.mp4: square tan burlap weave, fuzz off (_BumpScale 0, _FiberAmt 0).
+        float tileX = Mathf.Max(1f, len * 1.6f);
+        float tileZ = LaneDepth * 1.6f;
+        r.sharedMaterial = CraftMesh.Shared($"ground-burlap-tan-{tileX:0.##}", () =>
+            CraftMesh.Felt(tex, Color.white, new Vector2(tileX, tileZ), 0f, 0.02f, 0.70f, 0.98f));
         var col = go.GetComponent<Collider>();
         col.material = GripMat();
         // frayed burlap edge at each gap: a thin darker lip
@@ -328,8 +329,8 @@ public class LevelRunner : MonoBehaviour
         lip.transform.localScale = new Vector3(len + 0.04f, 0.06f, LaneDepth + 0.04f);
         lip.isStatic = true;
         Destroy(lip.GetComponent<Collider>());
-        lip.GetComponent<Renderer>().sharedMaterial = CraftMesh.Shared("ground-burlap-edge", () =>
-            CraftMesh.Felt(tex, new Color(0.62f, 0.52f, 0.40f), new Vector2(8f, 8f), 1.4f, 0.05f, 0.70f, 0.98f));
+        lip.GetComponent<Renderer>().sharedMaterial = CraftMesh.Shared($"ground-burlap-edge-{tileX:0.##}", () =>
+            CraftMesh.Felt(tex, new Color(0.68f, 0.56f, 0.42f), new Vector2(tileX, tileZ), 0f, 0.02f, 0.70f, 0.98f));
     }
 
     /// Raised kraft platform. Top surface at `top`; the block is the floor, not a lid over a pit.

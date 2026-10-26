@@ -72,9 +72,9 @@ public class TitleDolly : MonoBehaviour
         CacheParts();
         var cam = _cam;
         var follow = _follow;
-        _z0 = follow != null ? follow.offset.z : -4.05f;
-        _y = follow != null ? follow.restY + follow.offset.y : 1.56f;
-        _pitch = follow != null ? follow.pitch : 6.5f;
+        _z0 = follow != null && follow.offset.z <= -4.5f ? follow.offset.z : -5.45f;
+        _y = follow != null ? follow.restY + follow.offset.y : 1.91f;
+        _pitch = follow != null ? follow.pitch : 7.5f;
         float dist = Mathf.Max(0.5f, Mathf.Abs(_z0));
         // closer to the set: 4% of the rest distance, toward z = 0
         _z1 = _z0 + Mathf.Sign(-_z0) * dist * pushIn;
@@ -82,13 +82,14 @@ public class TitleDolly : MonoBehaviour
         float aspect = cam != null ? Mathf.Max(0.5f, cam.aspect) : 16f / 9f;
         float width = 2f * dist * Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) * aspect;
         _travel = widthsPerSecond * width * clipSeconds;
-        _focusX = FocusX();
+        _focusX = FocusX(follow);
     }
 
-    /// Bridge centred when the wide set is in the scene (grinder left, flower tree right).
-    /// Otherwise the handmade start: grinder left of the stitched title.
-    static float FocusX()
+    /// Centers on the wide opening yard when Imagine Bean is present, or the bridge/grinder span.
+    static float FocusX(SetCameraFollow follow)
     {
+        if (follow != null && follow.target != null)
+            return follow.target.position.x + follow.offset.x;
         Grinders.Clear();
         Planks.Clear();
         Flowers.Clear();
@@ -112,7 +113,7 @@ public class TitleDolly : MonoBehaviour
             float x = grinders[i].position.x;
             if (x < left) { left = x; any = true; }
         }
-        return any ? left + 1.7f : 0.4f;
+        return any ? left + 1.7f : 0.55f;
     }
 
     static float AvgX(List<Transform> list)

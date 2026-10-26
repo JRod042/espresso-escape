@@ -32,15 +32,15 @@ public static class FeltWall
     const float Sheet = 0.085f;      // back liner, constant thickness behind the front wave
     const float GrooveDrop = 0.010f;
     const float KraftU = 0.012f;
-    // Three clouds. Side-to-center drop on n014 is 43 px, about 0.30 m once a cloud is five flutes wide.
-    // FeltCloudCord sags 0.11 of the span, so a 4.4 m cord drops 0.48 m. That is the whole garland.
-    const float CordX0 = -2.2f;
-    const float CordX1 = 2.2f;
-    const float CordY = 5.62f;
+    // Upper-wall jute garland and cotton pillow clouds (285.jpg, set-01.jpg, rotate-wall.mp4).
+    const float CordX0 = -3.4f;
+    const float CordX1 = 1.4f;
+    const float CordX2 = 6.2f;
+    const float CordY = 3.12f;
     const float CordSag = 0.32f;
     const float CordRadius = 0.015f;
-    const float CloudZ = -0.48f;
-    const float CordZ = -0.60f;
+    const float CloudZ = -0.14f;
+    const float CordZ = -0.16f;
 
     // Overlapping puffs. Centres sit inside each other's radii so they melt into cotton, not a row of balls.
     static readonly Vector3[] LobeAt =
@@ -66,7 +66,7 @@ public static class FeltWall
 
     /// Root "Kraft Backdrop". Position is the floor point on the wall.
     /// The sheet rises from local y = 0 and faces local −Z, toward the camera.
-    public static GameObject Build(Vector3 position)
+    public static GameObject Build(Vector3 position, float width = 22f)
     {
         var root = new GameObject("Kraft Backdrop");
         root.transform.position = position;
@@ -79,15 +79,22 @@ public static class FeltWall
         KraftEdge(root.transform, Width * 0.5f);
         KraftLip(root.transform);
 
-        // n014 cloud tops: left y223, center y266, right y256. Centers sit about eight flutes apart.
+        // Garland across the upper wall: small stuffed pillow clouds on the jute cord.
+        // Span 1 (-3.4 .. 1.4) and Span 2 (1.4 .. 6.2) meet under the center-right cloud so there is no exposed kink
+        // and the title sign below (-0.35, 1.92) sits on clean corrugated kraft flutes.
         FeltCloudCord.Cord(root.transform, new Vector3(CordX0, CordY, CordZ), new Vector3(CordX1, CordY, CordZ), 3);
-        const float leftX = -1.76f;
-        const float midX = 0f;
-        const float rightX = 1.76f;
-        // Cord crosses the upper third of each puff. Center hangs lower because that is the belly.
-        FeltCloudCord.Cloud(root.transform, new Vector3(leftX, CordHang(leftX) - 0.16f, CloudZ), 1.05f, 2);
-        FeltCloudCord.Cloud(root.transform, new Vector3(midX, CordHang(midX) - 0.20f, CloudZ), 1.15f, 5);
-        FeltCloudCord.Cloud(root.transform, new Vector3(rightX, CordHang(rightX) - 0.16f, CloudZ), 1.00f, 8);
+        FeltCloudCord.Cord(root.transform, new Vector3(CordX1, CordY, CordZ), new Vector3(CordX2, CordY, CordZ), 7);
+
+        const float c1X = -2.20f;
+        const float c2X = -0.50f;
+        const float c3X = 1.40f;
+        const float c4X = 3.25f;
+        const float c5X = 4.95f;
+        FeltCloudCord.Cloud(root.transform, new Vector3(c1X, SpanHang(CordX0, CordX1, c1X) - 0.10f, CloudZ), 0.76f, 2);
+        FeltCloudCord.Cloud(root.transform, new Vector3(c2X, SpanHang(CordX0, CordX1, c2X) - 0.06f, CloudZ), 0.70f, 5);
+        FeltCloudCord.Cloud(root.transform, new Vector3(c3X, CordY - 0.10f, CloudZ), 0.78f, 8);
+        FeltCloudCord.Cloud(root.transform, new Vector3(c4X, SpanHang(CordX1, CordX2, c4X) - 0.10f, CloudZ), 0.76f, 11);
+        FeltCloudCord.Cloud(root.transform, new Vector3(c5X, SpanHang(CordX1, CordX2, c5X) - 0.10f, CloudZ), 0.72f, 14);
         return root;
     }
 
@@ -111,10 +118,10 @@ public static class FeltWall
     }
 
     /// Same belly as FeltCloudCord.CordMesh: sag = span * 0.11, deepest at mid-span.
-    static float CordHang(float x)
+    static float SpanHang(float x0, float x1, float x)
     {
-        float len = CordX1 - CordX0;
-        float u = Mathf.InverseLerp(CordX0, CordX1, x);
+        float len = x1 - x0;
+        float u = Mathf.InverseLerp(x0, x1, x);
         return CordY - len * 0.11f * 4f * u * (1f - u);
     }
 

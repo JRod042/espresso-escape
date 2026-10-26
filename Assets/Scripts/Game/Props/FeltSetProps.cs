@@ -300,6 +300,7 @@ public static class FeltSetProps
     /// library/rotate-moss.mp4. One dense round felt ball. `scale` is the diameter.
     public static GameObject MossBall(Vector3 pos, float scale, int seed = 1)
     {
+        if (scale > 0.40f) scale *= 0.24f;
         scale = Mathf.Max(0.04f, scale);
         float radius = scale * 0.5f;
         var root = Root("Moss", pos, 1f);
@@ -329,6 +330,7 @@ public static class FeltSetProps
     /// library/rotate-roast-bean.mp4. One dark roast bean. `scale` is the length. `yaw` is degrees.
     public static GameObject RoastBean(Vector3 pos, float scale, float yaw)
     {
+        if (scale > 0.25f) scale *= 0.11f;
         scale = Mathf.Max(0.02f, scale);
         var root = Root("Roast Bean", pos, 1f);
         root.transform.rotation = Quaternion.Euler(12f, yaw, 6f);
@@ -372,6 +374,7 @@ public static class FeltSetProps
 
     public static GameObject YarnOrb(Vector3 pos, float scale, bool green)
     {
+        if (scale > 0.30f) scale *= 0.18f;
         scale = Mathf.Max(0.04f, scale);
         float radius = scale * 0.5f;
         var root = Root("Yarn Ball", pos, 1f);
@@ -396,6 +399,118 @@ public static class FeltSetProps
         Color tail = green ? new Color(0.94f, 1.02f, 0.86f) : new Color(1.02f, 0.96f, 0.86f);
         Tube(host, "Yarn Tail", tail0, tail1, radius * 0.04f, new Vector2(1f, 3f), tail, green ? GreenTex : YarnTex, 1.2f, 0.14f, 0.55f, 0.9f, 0.12f);
         return root;
+    }
+
+    /// library/rotate-goal.mp4. Fluted vertical tan felt post with narrower fluted upper shaft on a square stitched felt mat.
+    public static GameObject GoalPost(Vector3 pos)
+    {
+        var root = Root("Goal Marker", pos, 1f);
+        root.isStatic = false;
+        var host = root.transform;
+
+        Color matCream = new Color(0.90f, 0.84f, 0.74f);
+        Color borderCream = new Color(0.94f, 0.88f, 0.78f);
+        Color tanPost = new Color(0.90f, 0.70f, 0.44f);
+        Color tanCap = new Color(0.94f, 0.76f, 0.52f);
+
+        // Square stitched felt mat on the burlap
+        const float matW = 0.64f;
+        const float matH = 0.014f;
+        var matPad = Mesh(host, Cloth(matW, matH, matW, 2.2f, 2.2f), "Goal Mat", new Vector3(0f, matH * 0.5f, 0f), Quaternion.identity, Vector3.one);
+        matPad.isStatic = false;
+        Paint(matPad, BurlapTex, new Color(0.96f, 0.90f, 0.80f), Vector2.one, 0f, 0.02f, 0.70f, 0.98f, 0f);
+
+        float half = matW * 0.5f;
+        const float borderW = 0.038f;
+        const float borderH = 0.022f;
+        Vector3[] borderPos =
+        {
+            new Vector3(0f, borderH * 0.5f, -half),
+            new Vector3(0f, borderH * 0.5f,  half),
+            new Vector3(-half, borderH * 0.5f, 0f),
+            new Vector3( half, borderH * 0.5f, 0f)
+        };
+        Vector3[] borderScale =
+        {
+            new Vector3(matW + borderW, borderH, borderW),
+            new Vector3(matW + borderW, borderH, borderW),
+            new Vector3(borderW, borderH, matW - borderW),
+            new Vector3(borderW, borderH, matW - borderW)
+        };
+        for (int i = 0; i < 4; i++)
+        {
+            var rim = Mesh(host, GrainBox(borderScale[i].x, borderScale[i].y, borderScale[i].z, i < 2 ? 0 : 2, 6f),
+                "Goal Mat Border", borderPos[i], Quaternion.identity, Vector3.one);
+            rim.isStatic = false;
+            Paint(rim, CreamTex, i < 2 ? borderCream : matCream, new Vector2(2f, 1f), 0.8f, 0.08f, 0.78f, 0.96f, 0.08f);
+        }
+
+        // Lower fluted tan felt cylinder (radius 0.125, height 0.62, 22 vertical felt pleats)
+        var lower = Mesh(host, FlutedColumn(0.125f, 0.62f, 22, 0.012f), "Goal Post", new Vector3(0f, 0.014f, 0f), Quaternion.identity, Vector3.one);
+        lower.isStatic = false;
+        Paint(lower, BrownTex, tanPost, new Vector2(3f, 2.4f), 1.4f, 0.12f, 0.76f, 0.95f, 0.14f);
+
+        // Rounded felt shoulder ring at the top of the lower cylinder
+        var shoulder = Mesh(host, Torus(0.088f, 0.036f, 28, 12), "Goal Shoulder", new Vector3(0f, 0.622f, 0f), Quaternion.identity, new Vector3(1f, 0.45f, 1f));
+        shoulder.isStatic = false;
+        Paint(shoulder, BrownTex, tanCap, new Vector2(2f, 2f), 1.2f, 0.12f, 0.78f, 0.95f, 0.12f);
+
+        // Upper narrower fluted tan felt shaft (radius 0.048, height 0.68, 14 vertical felt pleats)
+        var upper = Mesh(host, FlutedColumn(0.048f, 0.68f, 14, 0.006f), "Goal Shaft", new Vector3(0f, 0.62f, 0f), Quaternion.identity, Vector3.one);
+        upper.isStatic = false;
+        Paint(upper, BrownTex, tanPost, new Vector2(2f, 2.6f), 1.4f, 0.12f, 0.76f, 0.95f, 0.14f);
+
+        return root;
+    }
+
+    static Mesh FlutedColumn(float radius, float height, int flutes, float depth)
+    {
+        string key = string.Format("goal-flute-{0:0.###}-{1:0.###}-{2}-{3:0.###}", radius, height, flutes, depth);
+        return Cached(key, () =>
+        {
+            int su = flutes * 6;
+            const int sv = 18;
+            int cols = su + 1;
+            var v = new List<Vector3>((sv + 1) * cols + 2);
+            var uv = new List<Vector2>(v.Capacity);
+            var tris = new List<int>(su * sv * 6 + su * 6);
+            for (int iv = 0; iv <= sv; iv++)
+            {
+                float fv = iv / (float)sv;
+                float y = fv * height;
+                float bevel = Mathf.Clamp01(fv / 0.05f) * Mathf.Clamp01((1f - fv) / 0.06f);
+                float endTaper = Mathf.Lerp(0.88f, 1f, bevel);
+                for (int iu = 0; iu <= su; iu++)
+                {
+                    float u = iu / (float)su;
+                    float a = u * Mathf.PI * 2f;
+                    float wave = Mathf.Abs(Mathf.Cos(a * flutes * 0.5f));
+                    float pleat = Mathf.Pow(wave, 0.55f);
+                    float split = 1f - 0.15f * Mathf.Sin(fv * Mathf.PI) * Mathf.Sin(a * 3f);
+                    float r = (radius * endTaper) - depth * (1f - pleat) * split;
+                    v.Add(new Vector3(Mathf.Cos(a) * r, y, Mathf.Sin(a) * r));
+                    uv.Add(new Vector2(u * 2f, fv * 2f));
+                }
+            }
+            for (int iv = 0; iv < sv; iv++)
+                for (int iu = 0; iu < su; iu++)
+                {
+                    int a = iv * cols + iu;
+                    Vector3 outDir = new Vector3(v[a].x, 0f, v[a].z);
+                    Face(v, tris, a, a + 1, a + 1 + cols, a + cols, outDir);
+                }
+            int bot = v.Count;
+            v.Add(new Vector3(0f, 0f, 0f)); uv.Add(new Vector2(0.5f, 0.5f));
+            int top = v.Count;
+            v.Add(new Vector3(0f, height, 0f)); uv.Add(new Vector2(0.5f, 0.5f));
+            int topRow = sv * cols;
+            for (int iu = 0; iu < su; iu++)
+            {
+                Tri(v, tris, bot, iu + 1, iu, Vector3.down);
+                Tri(v, tris, top, topRow + iu, topRow + iu + 1, Vector3.up);
+            }
+            return Build(v, uv, tris, key);
+        });
     }
 
     /// Felt succulent leaf. `taper` 0 keeps a round tip; higher taper points the heart leaves.

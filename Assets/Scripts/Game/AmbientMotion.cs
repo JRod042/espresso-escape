@@ -42,7 +42,7 @@ public class AmbientMotion : MonoBehaviour
     readonly List<(Transform t, Quaternion r, float ph)> _hangs = new List<(Transform, Quaternion, float)>();
     Material[] _leafMats;
     Camera _cam;
-    float _nextLeaf, _nextScan;
+    float _nextLeaf;
 
     void Start()
     {
@@ -50,9 +50,9 @@ public class AmbientMotion : MonoBehaviour
         var tile = Vector2.one;
         _leafMats = new[]
         {
-            LeafMat(new Color(1.00f, 0.98f, 0.96f), tile),
-            LeafMat(new Color(1.08f, 0.82f, 0.55f), tile), // orange
-            LeafMat(new Color(0.92f, 0.86f, 0.60f), tile)  // ochre
+            LeafMat(new Color(0.95f, 0.92f, 0.88f), tile),
+            LeafMat(new Color(0.95f, 0.72f, 0.48f), tile), // orange
+            LeafMat(new Color(0.88f, 0.80f, 0.56f), tile)  // ochre
         };
         Scan();
         _nextLeaf = Time.time + 2.0f;
@@ -70,14 +70,14 @@ public class AmbientMotion : MonoBehaviour
         });
     }
 
-    void Scan()
+    public void Scan()
     {
         _sources.Clear();
         _clouds.Clear();
         _hangs.Clear();
         _cloudHits.Clear();
         _hangHits.Clear();
-        SetNameQuery.Collect("Red Pompom", _sources, "Flower Petal", _sources, "Cloud", _cloudHits, "Hang Pivot", _hangHits);
+        SetNameQuery.Collect("Red Pompom", _sources, "Flower Petal", _sources, "Felt Cloud", _cloudHits, "Hang Pivot", _hangHits);
         for (int i = 0; i < _cloudHits.Count; i++)
         {
             var t = _cloudHits[i];
@@ -88,13 +88,11 @@ public class AmbientMotion : MonoBehaviour
             var t = _hangHits[i];
             _hangs.Add((t, t.localRotation, Random.value * 6.2832f));
         }
-        _nextScan = Time.time + 6f;
     }
 
     void Update()
     {
         float t = Time.time, dt = Time.deltaTime;
-        if (t >= _nextScan) Scan();
 
         // clouds: a few centimetres of drift and a slow rock, never in step with each other
         for (int i = 0; i < _clouds.Count; i++)

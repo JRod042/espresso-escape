@@ -1,89 +1,228 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
-/// Opening diorama. The prop builders live in Props/; this only places them
-/// when the scene still has the old cubes. Existing Pine / tree roots stay put.
-/// The ground colliders, hop gaps, and BeanImpulse stay as authored.
+/// Opening handmade felt diorama (DriveLook/imagine/285.jpg, frames/set-01..06.jpg, library/rotate-*.mp4).
+/// Cleans any leftover primitive roots and builds/rebuilds the opening props from the Props/ builders,
+/// including when a root already exists. Ground colliders, hop gaps, and BeanImpulse stay untouched.
 public static class OpeningYard
 {
+    static readonly string[] ReplaceRoots =
+    {
+        "Kraft Backdrop", "Backdrop", "Yarn Title", "Title Sign", "Hanging Yarn",
+        "Pine", "Red Tree", "Flower Tree", "Dotted Tree",
+        "Cardboard Grinder", "Kraft Bridge", "Bean Walkway",
+        "Moss", "Sage", "Roast Bean", "Yarn Ball", "Goal Marker",
+        "FloorWall Seam", "Twine", "Felt Cloud", "Burlap Path", "Step", "Contact Shadow", "Sphere"
+    };
+
+    static readonly string[] ReplacePrefixes =
+    {
+        "Kraft Rib", "Kraft Flute", "Pine ", "Pinecone", "Yarn Loop", "Red Trunk",
+        "Bloom ", "Flower Petal", "Path Yarn Edge", "Bridge ",
+        "Grinder ", "Drawer Knob", "Crank Knob", "Succulent ", "Title "
+    };
+
     public static void Keep()
     {
-        HideBakedKraft();
-        HideLoosePines();
-        if (!Any("Kraft Backdrop"))
-        {
-            // Floor point of the old rib row (cubes were centred at y 2.5, z 8.4).
-            var wall = FeltWall.Build(new Vector3(0f, 0f, 8.4f));
-            var backdrop = wall.AddComponent<BackdropFollow>();
-            var beanNow = GameObject.Find("Imagine Bean");
-            if (beanNow != null) backdrop.target = beanNow.transform;
-        }
-
-        if (!Any("Pine"))
-        {
-            FeltPine.Build(new Vector3(-2.05f, 0f, 1.55f), 0.95f);
-            FeltPine.Build(new Vector3(-1.05f, 0f, 1.15f), 1.08f);
-            FeltPine.Build(new Vector3(2.25f, 0f, 1.40f), 0.62f);
-        }
-        if (!Any("Red Tree"))
-            FeltRedTree.Build(new Vector3(1.25f, 0f, 1.25f), 1.08f);
-        if (!Any("Flower Tree"))
-            FeltFlowerTree.Build(new Vector3(12.40f, 0f, 1.70f), 0.90f);
-        if (!Any("Dotted Tree"))
-            FeltDottedTree.Build(new Vector3(3.55f, 0f, 2.05f), 1.05f);
-
-        // One short arch ahead of the bean. Rise is 0.30 of the span, so this
-        // stays a little guide. The hop gaps and the ground collider are untouched.
-        if (!Any("Bean Walkway"))
-            FeltWalkway.Build(1.15f, 3f, 0f);
+        CleanSceneRoots();
 
         var bean = GameObject.Find("Imagine Bean");
-        if (bean != null && bean.transform.Find("Bean Body/Yarn Seam") == null)
-            FeltBeanSurface.Apply(bean);
-        var runner = Object.FindAnyObjectByType<LevelRunner>();
-        if (runner != null && runner.bean == null && bean != null)
-            runner.bean = bean.transform;
-        var follow = Object.FindAnyObjectByType<SetCameraFollow>();
-        if (follow != null && follow.target == null && bean != null)
-            follow.target = bean.transform;
-    }
-
-    /// The baked opening wall is numbered cubes (Kraft Rib 0, Kraft Flute).
-    /// LevelSetSpawner later adds its own "Kraft Rib" props; those names do not match.
-    static void HideBakedKraft()
-    {
-        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude))
+        if (bean != null)
         {
-            string n = t.name;
-            bool numberedRib = n.StartsWith("Kraft Rib ") && n.Length > 10 && char.IsDigit(n[10]);
-            if (!numberedRib && n != "Kraft Flute" && n != "FloorWall Seam") continue;
-            var renderer = t.GetComponent<MeshRenderer>();
-            if (renderer != null) renderer.enabled = false;
-        }
-    }
-
-    /// Old pine flaps and yarn loops are loose in the scene. The new pines
-    /// parent their pieces under a root named Pine, so those stay visible.
-    static void HideLoosePines()
-    {
-        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude))
-        {
-            string n = t.name;
-            if (!n.StartsWith("Pine ") && n != "Pinecone" && !n.StartsWith("Pinecone")) continue;
-            bool under = false;
-            for (var p = t.parent; p != null; p = p.parent)
+            if (!Application.isPlaying)
             {
-                if (p.name == "Pine") { under = true; break; }
+                bean.transform.position = new Vector3(0f, 0.46f, 0f);
+                bean.transform.rotation = Quaternion.Euler(0f, 145f, 0f);
             }
-            if (under) continue;
-            var renderer = t.GetComponent<MeshRenderer>();
-            if (renderer != null) renderer.enabled = false;
+            FeltBeanSurface.Apply(bean);
+        }
+
+        EnsureFloor();
+
+        // 1. Corrugated vertical-flute kraft wall + jute cord + small pillow clouds on upper wall (rotate-wall / rotate-cloud / rotate-cord)
+        var wall = FeltWall.Build(new Vector3(0f, -0.05f, 2.25f), 24f);
+        var bf = wall.AddComponent<BackdropFollow>();
+        bf.aheadX = 0.55f;
+        if (bean != null) bf.target = bean.transform;
+        if (wall.GetComponent<AmbientMotion>() == null)
+            wall.AddComponent<AmbientMotion>();
+
+        // 2. One stitched felt title on the upper wall, no mirrored copy (rotate-title)
+        FeltTitle.Build(new Vector3(-0.35f, 1.92f, 1.92f), 0.36f);
+
+        // 3. Scalloped felt pines with cones and short trunk (rotate-pine, 285.jpg)
+        FeltPine.Build(new Vector3(-1.85f, 0f, 1.38f), 0.96f);
+        FeltPine.Build(new Vector3(-1.12f, 0f, 1.52f), 1.08f);
+        FeltPine.Build(new Vector3(1.65f, 0f, 1.28f), 0.74f);
+
+        // 4. Red pompom tree on flared knitted trunk (rotate-red-tree, 285.jpg)
+        FeltRedTree.Build(new Vector3(0.96f, 0f, 1.42f), 1.05f);
+
+        // 5. Cardboard grinder on left of yard (rotate-grinder, set-01.jpg)
+        FeltSetProps.CardboardGrinder(new Vector3(-2.35f, 0f, 0.82f), 0.84f);
+
+        // 6. Kraft bridge down the path on right of opening yard (FeltSetProps.KraftBridge untouched)
+        FeltSetProps.KraftBridge(new Vector3(2.55f, 0f, 0.25f));
+
+        // 7. Flower tree & dotted trees framing the yard and bridge (rotate-flower-tree, rotate-dotted-tree, set-01.jpg)
+        FeltFlowerTree.Build(new Vector3(3.85f, 0f, 1.28f), 0.92f);
+        FeltDottedTree.Build(new Vector3(-3.05f, 0f, 1.38f), 0.92f);
+        FeltDottedTree.Build(new Vector3(2.85f, 0f, 1.58f), 0.72f);
+        FeltDottedTree.Build(new Vector3(4.58f, 0f, 1.35f), 0.84f);
+
+        // 8. Moss balls in right foreground/midground (rotate-moss, 285.jpg)
+        FeltSetProps.MossBall(new Vector3(0.98f, 0f, -0.10f), 0.26f, 1);
+        FeltSetProps.MossBall(new Vector3(1.10f, 0f, -0.58f), 0.24f, 2);
+        FeltSetProps.MossBall(new Vector3(0.58f, 0f, -0.64f), 0.18f, 3);
+
+        // 9. Plump sage rosettes on the burlap (rotate-sage, 285.jpg, set-01.jpg)
+        FeltSetProps.Sage(new Vector3(-1.18f, 0f, -0.62f), 0.70f);
+        FeltSetProps.Sage(new Vector3(-2.65f, 0f, -0.45f), 0.68f);
+        FeltSetProps.Sage(new Vector3(3.55f, 0f, -0.38f), 0.66f);
+
+        // 10. Small dark roast beans on the burlap (rotate-roast-bean, 285.jpg, set-01.jpg)
+        FeltSetProps.RoastBean(new Vector3(-0.92f, 0f, -0.26f), 0.11f, 28f);
+        FeltSetProps.RoastBean(new Vector3(0.78f, 0f, -0.78f), 0.11f, -34f);
+        FeltSetProps.RoastBean(new Vector3(-2.45f, 0f, -0.62f), 0.10f, 18f);
+        FeltSetProps.RoastBean(new Vector3(3.32f, 0f, -0.55f), 0.11f, 42f);
+        FeltSetProps.RoastBean(new Vector3(3.78f, 0f, -0.42f), 0.11f, -52f);
+
+        // 11. Small crocheted yarn balls (rotate-yarn-ball, set-01.jpg)
+        FeltSetProps.YarnBall(new Vector3(-2.78f, 0f, 0.92f), 0.16f, false);
+        FeltSetProps.YarnBall(new Vector3(3.25f, 0f, 1.05f), 0.15f, false);
+        FeltSetProps.YarnBall(new Vector3(3.55f, 0f, -0.52f), 0.18f, false);
+        FeltSetProps.YarnBall(new Vector3(4.82f, 0f, 0.85f), 0.17f, false);
+
+        // 12. Fluted tan felt goal post on square stitched mat (rotate-goal.mp4)
+        var goal = FeltSetProps.GoalPost(new Vector3(14f, 0f, 0.55f));
+
+        var runner = Object.FindAnyObjectByType<LevelRunner>();
+        if (runner != null)
+        {
+            if (runner.bean == null && bean != null) runner.bean = bean.transform;
+            runner.goalMarker = goal.transform;
+        }
+
+        EnsureWideCamera(bean != null ? bean.transform : null);
+    }
+
+    static void CleanSceneRoots()
+    {
+        var scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid()) return;
+        var roots = scene.GetRootGameObjects();
+        var kill = new List<GameObject>(64);
+        for (int i = 0; i < roots.Length; i++)
+        {
+            var go = roots[i];
+            if (go == null) continue;
+            if (ShouldReplaceRoot(go.name))
+                kill.Add(go);
+        }
+        for (int i = 0; i < kill.Count; i++)
+        {
+            if (Application.isPlaying) Object.Destroy(kill[i]);
+            else Object.DestroyImmediate(kill[i]);
         }
     }
 
-    static bool Any(string name)
+    static bool ShouldReplaceRoot(string name)
     {
-        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Exclude))
-            if (t.name == name) return true;
+        for (int i = 0; i < ReplaceRoots.Length; i++)
+            if (name == ReplaceRoots[i]) return true;
+        for (int i = 0; i < ReplacePrefixes.Length; i++)
+            if (name.StartsWith(ReplacePrefixes[i])) return true;
         return false;
+    }
+
+    /// Square tan burlap weave from rotate-floor.mp4, fuzz off (_BumpScale 0, _FiberAmt 0).
+    public static void EnsureFloor()
+    {
+        var burlapTex = Resources.Load<Texture2D>("Look/tex-burlap");
+        var floor = GameObject.Find("Burlap Floor");
+        if (floor == null)
+        {
+            floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            floor.name = "Burlap Floor";
+        }
+        floor.transform.position = new Vector3(-3f, -0.08f, 0f);
+        floor.transform.rotation = Quaternion.identity;
+        floor.transform.localScale = new Vector3(12f, 0.16f, LevelRunner.LaneDepth);
+        floor.isStatic = true;
+
+        float tileX = 12f * 1.6f;
+        float tileZ = LevelRunner.LaneDepth * 1.6f;
+        var floorMat = CraftMesh.Shared("opening-burlap-floor-sq", () =>
+        {
+            var m = CraftMesh.Felt(burlapTex, Color.white, new Vector2(tileX, tileZ), 0f, 0.02f, 0.70f, 0.98f, 0f);
+            if (m != null && m.HasProperty("_BumpScale")) m.SetFloat("_BumpScale", 0f);
+            if (m != null && m.HasProperty("_FiberAmt")) m.SetFloat("_FiberAmt", 0f);
+            return m;
+        });
+        var r = floor.GetComponent<Renderer>();
+        if (r != null) r.sharedMaterial = floorMat;
+
+        // Ensure edit-mode ground under the right side of the yard (LevelRunner replaces Level Ground in Play Mode)
+        if (!Application.isPlaying)
+        {
+            var groundRootGo = GameObject.Find("Level Ground");
+            if (groundRootGo == null) groundRootGo = new GameObject("Level Ground");
+            var groundRoot = groundRootGo.transform;
+            for (int i = groundRoot.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(groundRoot.GetChild(i).gameObject);
+
+            float[] edges = LevelRunner.L1Edges;
+            for (int i = 0; i + 1 < edges.Length; i += 2)
+            {
+                float x0 = edges[i], x1 = edges[i + 1], len = x1 - x0;
+                var blk = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                blk.name = "Burlap Ground";
+                blk.transform.SetParent(groundRoot, false);
+                blk.transform.position = new Vector3((x0 + x1) * 0.5f, -0.08f, 0f);
+                blk.transform.localScale = new Vector3(len, 0.16f, LevelRunner.LaneDepth);
+                blk.isStatic = true;
+                float bxTile = Mathf.Max(1f, len * 1.6f);
+                blk.GetComponent<Renderer>().sharedMaterial = CraftMesh.Shared($"opening-burlap-blk-{bxTile:0.##}", () =>
+                {
+                    var m = CraftMesh.Felt(burlapTex, Color.white, new Vector2(bxTile, tileZ), 0f, 0.02f, 0.70f, 0.98f, 0f);
+                    if (m != null && m.HasProperty("_BumpScale")) m.SetFloat("_BumpScale", 0f);
+                    if (m != null && m.HasProperty("_FiberAmt")) m.SetFloat("_FiberAmt", 0f);
+                    return m;
+                });
+            }
+        }
+    }
+
+    public static void EnsureWideCamera(Transform bean)
+    {
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            var camObj = GameObject.Find("Set Camera");
+            if (camObj != null) cam = camObj.GetComponent<Camera>();
+        }
+        if (cam == null) return;
+
+        cam.usePhysicalProperties = false;
+        cam.fieldOfView = 46.4f;
+        cam.nearClipPlane = 0.05f;
+        cam.farClipPlane = 90f;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.66f, 0.52f, 0.36f);
+
+        var follow = cam.GetComponent<SetCameraFollow>();
+        if (follow == null) follow = cam.gameObject.AddComponent<SetCameraFollow>();
+        if (bean != null) follow.target = bean;
+        follow.offset = new Vector3(0.55f, 1.35f, -5.45f);
+        follow.restY = 0.46f;
+        follow.pitch = 7.5f;
+
+        if (!Application.isPlaying)
+        {
+            float bx = bean != null ? bean.position.x : 0f;
+            cam.transform.position = new Vector3(bx + follow.offset.x, follow.restY + follow.offset.y, follow.offset.z);
+            cam.transform.rotation = Quaternion.Euler(follow.pitch, 0f, 0f);
+        }
     }
 }

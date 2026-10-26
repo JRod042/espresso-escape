@@ -32,10 +32,9 @@ public static class FeltCloudCord
          0.26f, -0.09f, 0.142f  // lower right
     };
 
-    // tex-felt-cream mean is 244.7, 233.1, 223.0.
-    // rotate-cloud.mp4 body is p50 244,235,226 and p75 250,243,236. Albedo is the lit face.
-    static readonly Color IvoryMul = new Color(248f / 244.7f, 240f / 233.1f, 232f / 223f);
-    static readonly Color IvoryFlat = new Color(248f / 255f, 240f / 255f, 232f / 255f);
+    // tex-felt-cream mean is 244.7, 233.1, 223.0. Keep tint < 1 so clouds never blow out to a white blob.
+    static readonly Color IvoryMul = new Color(0.95f, 0.93f, 0.89f);
+    static readonly Color IvoryFlat = new Color(0.93f, 0.90f, 0.85f);
 
     // tex-yarn-fiber mean is 147.9, 115.9, 82.0.
     // rotate-cord.mp4 strand is p75 192,152,116 and p90 206,168,135. Pale tan, less red than 196,158,119.

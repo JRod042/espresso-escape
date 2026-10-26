@@ -7,10 +7,10 @@ using UnityEngine;
 public class SetCameraFollow : MonoBehaviour
 {
     public Transform target;
-    // 285.mp4: bean just left of centre, lens near eye level, a slow pan that trails the walk; gen-2d7dcad9: slow dolly.
-    public Vector3 offset = new Vector3(0.15f, 1.05f, -4.35f); // 9:02 PM cam-shot framing that match.ps1 scores
-    public float restY = 0.51f;       // bean root height when the capsule (r 0.38, h 0.86) rests on the burlap
-    public float pitch = 6.5f;        // 285: camera barely above the bean's eyes, not looking down on it
+    // Wide side-scroll diorama framing (285.jpg + set-01.jpg): bean, pines, grinder, red tree, bridge, and clouds on upper wall.
+    public Vector3 offset = new Vector3(0.55f, 1.35f, -5.45f);
+    public float restY = 0.46f;       // bean root height when the feet rest on the burlap
+    public float pitch = 7.5f;        // gentle downward tilt into the handmade stage
     public float posDamp = 6.0f;      // slower, heavier pan like the clip (was 8.5)
     public float lookDamp = 10.5f; // laneB-cam-lookdamp-20260917
     public float ySoft = 0.22f;       // follow even less of the hop height so the twine/clouds stay put

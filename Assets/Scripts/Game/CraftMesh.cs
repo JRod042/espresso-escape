@@ -901,6 +901,8 @@ public static class CraftMesh
         if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 1f - rough);
         if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 1f - rough);
         if (mat.HasProperty("_SeamAmt")) mat.SetFloat("_SeamAmt", seam);
+        if (mat.HasProperty("_FiberAmt") && (bump <= 0.001f || (tex != null && tex.name.Contains("burlap"))))
+            mat.SetFloat("_FiberAmt", 0f);
         return mat;
     }
 
