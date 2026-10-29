@@ -9,8 +9,10 @@ using UnityEngine;
 public class TitleDolly : MonoBehaviour
 {
     public float clipSeconds = 6f;
-    public float widthsPerSecond = 0.06f;
-    public float pushIn = 0.04f;
+    public float widthsPerSecond = 0f;    // look step00: the 285 frame is static and the bean centred; any drift moved it off 0.50 (was 0.03)
+    public float titlePush = 0f;          // look step00: the title holds the play framing of 285 (bean full body ~34 %, feet ~0.71); was 0.35 (cut the feet)
+    public float titlePitchUp = 0f;       // look step00: same pitch as play (spec 18 +- 2); was 5
+    public float pushIn = 0.015f;     // look step00: the push-in ends on the 285 pose; 4 % started the shot with the bean at 0.33 height (was 0.04)
 
     float _t;
     bool _shot;
@@ -72,12 +74,14 @@ public class TitleDolly : MonoBehaviour
         CacheParts();
         var cam = _cam;
         var follow = _follow;
-        _z0 = follow != null && follow.offset.z <= -4.5f ? follow.offset.z : -5.45f;
+        // batch 2: guard was <= -4.5, which threw the closer play offset (-3.56) back to the old -5.45 wide shot
+        _z0 = follow != null && follow.offset.z <= -2.5f ? follow.offset.z + titlePush : -5.45f;
         _y = follow != null ? follow.restY + follow.offset.y : 1.91f;
-        _pitch = follow != null ? follow.pitch : 7.5f;
+        _pitch = follow != null ? follow.pitch - titlePitchUp : 7.5f;
         float dist = Mathf.Max(0.5f, Mathf.Abs(_z0));
-        // closer to the set: 4% of the rest distance, toward z = 0
-        _z1 = _z0 + Mathf.Sign(-_z0) * dist * pushIn;
+        // look step00: the push-in ENDS on the 285 pose and holds there, so it starts 4% of the rest distance farther back
+        _z1 = _z0;
+        _z0 = _z1 - Mathf.Sign(-_z1) * dist * pushIn;
         float fov = cam != null ? cam.fieldOfView : 46.4f;
         float aspect = cam != null ? Mathf.Max(0.5f, cam.aspect) : 16f / 9f;
         float width = 2f * dist * Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) * aspect;

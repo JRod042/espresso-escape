@@ -28,7 +28,7 @@ public class LevelRunner : MonoBehaviour
     public const float BridgeWidth = 1.20f;    // deck width along z, centred on the lane
     public const float BridgePlankRun = 0.36f; // plank length along the run, past the end centres
 
-    /// L5 tour arch, same deck, also on the floor (block [10.20, 22.00]), never over a gap.
+    /// L5 tour arch, same deck, also on the floor (block [10.20, 22.47]), never over a gap.
     public const float TourBridgeX0 = 13.2f;
     public const float TourBridgeLen = 3.4f;
 
@@ -36,23 +36,23 @@ public class LevelRunner : MonoBehaviour
     /// Every flat gap below is ≤ 1.42 m so it lands on the far lip. Downward gaps stay ≤ 1.50 m (still ≤ 1.6 m).
     /// Alternating edges: block, gap, block, gap, …
     /// L1 gaps 1.05 m (7.00–8.05) and 1.10 m (12.00–13.10).
-    /// L2 gaps 1.20 m (4.20–5.40) and 1.35 m (18.40–19.75). The bridge block is [5.40, 18.40].
-    public static readonly float[] L1Edges = { ApronEnd, 9.80f, 10.85f, 12.6f, 13.7f, 19f };
-    public static readonly float[] L2Edges = { ApronEnd, 11.30f, 12.50f, 18.40f, 19.75f, 27f };
+    /// L2 gaps 0.80 m (11.70–12.50) and 0.85 m (18.90–19.75). Batch 1 narrowed every gap for the 2.2 m/s run.
+    public static readonly float[] L1Edges = { ApronEnd, 10.15f, 10.85f, 12.90f, 13.7f, 19f }; // gaps 0.70 / 0.80 (batch 1: run 2.2 m/s)
+    public static readonly float[] L2Edges = { ApronEnd, 11.70f, 12.50f, 18.90f, 19.75f, 27f }; // gaps 0.80 / 0.85
 
-    /// L3 gaps 1.40 m (8.00–9.40), 1.42 m (15.20–16.62), 1.38 m (22.40–23.78). Wider than L2, still under 1.47 m.
-    public static readonly float[] L3Edges = { ApronEnd, 8.00f, 9.40f, 15.20f, 16.62f, 22.40f, 23.78f, 33f };
+    /// L3 gaps 0.85 m (8.55–9.40), 0.90 m (15.72–16.62), 0.90 m (22.88–23.78). Wider than L2.
+    public static readonly float[] L3Edges = { ApronEnd, 8.55f, 9.40f, 15.72f, 16.62f, 22.88f, 23.78f, 33f }; // gaps 0.85 / 0.90 / 0.90
 
-    /// L4 low burlap pairs, then the raised spans. Gaps: 1.30 m flat (8.00–9.30), 1.40 m high-to-high (16.50–17.90),
-    /// 1.50 m down from 0.56 m (24.50–26.00).
-    public static readonly float[] L4Low = { ApronEnd, 8.00f, 9.30f, 12.80f, 26.00f, 39f };
-    public static readonly float[] L4High = { 12.80f, 16.50f, 17.90f, 24.50f };
+    /// L4 low burlap pairs, then the raised spans. Gaps: 0.90 m flat (8.40–9.30), 0.90 m high-to-high (17.00–17.90),
+    /// 1.05 m down from 0.56 m (24.95–26.00).
+    public static readonly float[] L4Low = { ApronEnd, 8.40f, 9.30f, 12.80f, 26.00f, 39f }; // gap 0.90, drop gap 1.05
+    public static readonly float[] L4High = { 12.80f, 17.00f, 17.90f, 24.95f }; // gap 0.90
     public const float L4HighTop = 0.56f;
 
-    /// L5 low pairs and raised spans. Gaps: 1.20 m (9.00–10.20), 1.42 m (22.00–23.42),
-    /// 1.40 m high-to-high (32.00–33.40), 1.48 m down from 0.52 m (40.00–41.48). Goal is 48, on [41.48, 53].
-    public static readonly float[] L5Low = { ApronEnd, 9.00f, 10.20f, 22.00f, 23.42f, 27.00f, 41.48f, 53f };
-    public static readonly float[] L5High = { 27.00f, 32.00f, 33.40f, 40.00f };
+    /// L5 low pairs and raised spans. Gaps: 0.90 m (9.30–10.20), 0.95 m (22.47–23.42),
+    /// 0.95 m high-to-high (32.45–33.40), 1.10 m down from 0.52 m (40.38–41.48). Goal is 48, on [41.48, 53].
+    public static readonly float[] L5Low = { ApronEnd, 9.30f, 10.20f, 22.47f, 23.42f, 27.00f, 41.48f, 53f }; // gaps 0.90 / 0.95, drop gap 1.10
+    public static readonly float[] L5High = { 27.00f, 32.45f, 33.40f, 40.38f }; // gap 0.95
     public const float L5HighTop = 0.52f;
 
     /// True when x falls in (or within 0.4 m of) one of the gaps described by `edges`.
@@ -71,6 +71,17 @@ public class LevelRunner : MonoBehaviour
     static readonly Quaternion StartRot = Quaternion.Euler(0f, 145f, 0f); // faces the camera, turned a little into the run
 
     public int PickupCount { get; private set; }
+
+    /// x of the live checkpoint (start of the last solid block the bean stood on).
+    public float CheckpointX => _checkpointX;
+    /// Seconds since the last respawn; hazards stay quiet for a beat after one.
+    public float SinceRespawn => Time.time - _respawnAt;
+    float _respawnAt = -10f;
+
+    /// Fired after the bean is put back on the checkpoint (fall, steam vent, grinder).
+    public static event System.Action OnRespawn;
+    /// Fired after a level's lane, pickups and features are built.
+    public static event System.Action<LevelCatalog.LevelDef> OnLevelLoaded;
 
     /// Gaps of the live level as (x0, x1) pairs; LevelSetSpawner hides lane dressing over them.
     public static readonly List<Vector2> Gaps = new List<Vector2>();
@@ -98,6 +109,11 @@ public class LevelRunner : MonoBehaviour
         }
     }
 
+    /// Play gravity before the catalog's per-level gravityScale.
+    public const float BaseGravity = -22f;
+    /// √gravityScale of the live level; BeanController multiplies its hop impulse by this so the apex holds.
+    public static float HopScale { get; private set; } = 1f;
+
     public void LoadLevel(LevelCatalog.LevelDef def)
     {
         active = def;
@@ -105,19 +121,53 @@ public class LevelRunner : MonoBehaviour
         _cleared = false;
         _checkpointX = StartPos.x;
         _checkpointTop = 0f;
-        // Proof gravity stays −22 (hop 5.2 / mass 0.9 → ~0.52 s air). Catalog gravityScale is 1 on every level.
-        Physics.gravity = new Vector3(0f, -22f, 0f);
+        // Base gravity −22 (hop 5.2 / mass 0.9 → ~0.52 s air) × the catalog's gravityScale (1.00 … 1.04).
+        // HopScale = √scale keeps the apex height; air time drops by 1/√scale (L5: 0.525 → 0.515 s, centre travel
+        // 1.47 → 1.44 m), still ≥ the widest flat gap (1.42 m) before the bean's own reach.
+        float g = Mathf.Clamp(def.gravityScale > 0f ? def.gravityScale : 1f, 0.5f, 2f);
+        Physics.gravity = new Vector3(0f, BaseGravity * g, 0f);
+        HopScale = Mathf.Sqrt(g);
         BuildGround(def);
         ResetBean();
         if (goalMarker != null)
             goalMarker.position = new Vector3(def.goalZ, 0f, 0.55f);
         SpawnPickups(def);
-        // The open scene already holds the approved set. Do not spawn the old primitive yard over it.
+        LevelFeatures.Build(def, this);
+        // L1 in the handmade scene keeps the approved OpeningYard set (ref-285). Every other level hides those
+        // hero props and spawns its own set (PR-25 P0: L2–L5 sets used to be skipped whenever the bean was handmade).
         var set = FindAnyObjectByType<LevelSetSpawner>();
         bool handmade = GameObject.Find("Imagine Bean") != null;
-        if (set != null && !handmade) set.ApplyLevel(def);
+        bool yard = handmade && def.id == 1;
+        OpeningYard.SetYardPropsVisible(yard);
+        if (set != null)
+        {
+            if (yard) set.ClearSet();
+            else set.ApplyLevel(def);
+        }
         Debug.Log($"[LevelRunner] L{def.id} {def.title} pack={def.pack} goalX={def.goalZ:0.0} dens={def.obstacleDensity:0.00} gaps={Gaps.Count} boss={def.bossBeat}");
         Debug.Log($"PLAY_SMOKE L{def.id} loaded goalZ={def.goalZ:0.0} dens={def.obstacleDensity:0.00}");
+        OnLevelLoaded?.Invoke(def);
+    }
+
+    /// Put the bean back on the checkpoint after a hazard. Plays the hit sound and a haptic tick.
+    public void Respawn()
+    {
+        if (!_loaded) return;
+        EscapeAudio.Play(EscapeAudio.Sfx.Hazard, 0.7f);
+        Haptics.Pulse();
+        ResetBean();
+        _respawnAt = Time.time;
+        OnRespawn?.Invoke();
+    }
+
+    /// Extra honey from LevelFeatures (lift bonus). Counted in PickupCount like the lane honey.
+    public void AddHoney(Vector3 pos)
+    {
+        if (_pickupRoot == null) return;
+        var tex = Resources.Load<Texture2D>("Look/tex-felt-brown");
+        var honey = CraftMesh.Shared("pickup-honey", () =>
+            CraftMesh.Felt(tex, new Color(1.55f, 1.25f, 0.70f), Vector2.one * 2f, 1f, 0.22f, 0.7f, 0.85f));
+        Honey(pos, new System.Random(Mathf.RoundToInt(pos.x * 100f)), honey);
     }
 
     void ResetBean()
@@ -141,8 +191,7 @@ public class LevelRunner : MonoBehaviour
         if (!_loaded || bean == null || !Application.isPlaying) return;
         if (bean.position.y < fallResetY)
         {
-            EscapeAudio.Play(EscapeAudio.Sfx.Tap, 0.6f);
-            ResetBean();
+            Respawn();
             return;
         }
         // checkpoint: the start of the last solid block the bean stood on (including a raised kraft block)
@@ -212,9 +261,9 @@ public class LevelRunner : MonoBehaviour
         {
             // Wider flat gaps (1.40 / 1.42 / 1.38) plus kraft steps on each long block, clear of the lips.
             LayFixed(L3Edges, burlapTex);
-            Step(11.00f, 0.9f, 0.26f, kraft);   // block [9.40, 15.20]
+            Step(11.00f, 0.9f, 0.26f, kraft);   // block [9.40, 15.72]
             Step(11.90f, 0.9f, 0.52f, kraftDeep);
-            Step(18.20f, 0.9f, 0.26f, kraft);   // block [16.62, 22.40]
+            Step(18.20f, 0.9f, 0.26f, kraft);   // block [16.62, 22.88]
             Step(19.10f, 0.9f, 0.52f, kraftDeep);
             Step(25.50f, 0.9f, 0.26f, kraft);   // block [23.78, 33]
             Step(26.40f, 0.9f, 0.52f, kraftDeep);
@@ -223,21 +272,21 @@ public class LevelRunner : MonoBehaviour
         {
             // Low yard, steps up onto a kraft slab, hop at the same height, then drop back to burlap.
             Span(L4Low[0], L4Low[1], 0f, burlapTex, null);
-            Open(L4Low[1], L4Low[2], 0f);                         // 1.30 m
+            Open(L4Low[1], L4Low[2], 0f);                         // 0.90 m
             Span(L4Low[2], L4Low[3], 0f, burlapTex, null);
             Step(11.00f, 0.9f, 0.28f, kraft);                     // ends flush with the slab at 12.80
             Step(11.90f, 0.9f, L4HighTop, kraftDeep);
             Span(L4High[0], L4High[1], L4HighTop, burlapTex, kraft);
-            Open(L4High[1], L4High[2], L4HighTop);                // 1.40 m, both tops 0.56
+            Open(L4High[1], L4High[2], L4HighTop);                // 0.90 m, both tops 0.56
             Span(L4High[2], L4High[3], L4HighTop, burlapTex, kraft);
-            Open(L4High[3], L4Low[4], L4HighTop);                 // 1.50 m down to y = 0
+            Open(L4High[3], L4Low[4], L4HighTop);                 // 1.05 m down to y = 0
             Span(L4Low[4], L4Low[5], 0f, burlapTex, null);
         }
         else
         {
             // Long tour: yard, arch on the floor, steps onto a kraft run, yarn height, drop to the goal.
             Span(L5Low[0], L5Low[1], 0f, burlapTex, null);
-            Open(L5Low[1], L5Low[2], 0f);                         // 1.20 m
+            Open(L5Low[1], L5Low[2], 0f);                         // 0.90 m
             Span(L5Low[2], L5Low[3], 0f, burlapTex, null);        // tour arch sits on this block
             var tour = new GameObject("Tour Arch");
             tour.transform.SetParent(_groundRoot, false);
@@ -246,14 +295,14 @@ public class LevelRunner : MonoBehaviour
             ImagineSet.FillBridge(tour, tourLen, BridgeArch);
             Step(18.80f, 0.9f, 0.26f, kraft);                     // after the exit ramp, still on [10.20, 22]
             Step(19.70f, 0.9f, 0.52f, kraftDeep);
-            Open(L5Low[3], L5Low[4], 0f);                         // 1.42 m
+            Open(L5Low[3], L5Low[4], 0f);                         // 0.95 m
             Span(L5Low[4], L5Low[5], 0f, burlapTex, null);
             Step(25.20f, 0.9f, 0.26f, kraft);                     // ends flush with the slab at 27.00
             Step(26.10f, 0.9f, L5HighTop, kraftDeep);
             Span(L5High[0], L5High[1], L5HighTop, burlapTex, kraft);
-            Open(L5High[1], L5High[2], L5HighTop);                // 1.40 m, both tops 0.52
+            Open(L5High[1], L5High[2], L5HighTop);                // 0.95 m, both tops 0.52
             Span(L5High[2], L5High[3], L5HighTop, burlapTex, kraft);
-            Open(L5High[3], L5Low[6], L5HighTop);                 // 1.48 m down
+            Open(L5High[3], L5Low[6], L5HighTop);                 // 1.10 m down
             Span(L5Low[6], L5Low[7], 0f, burlapTex, null);
         }
     }

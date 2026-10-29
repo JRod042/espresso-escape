@@ -7,7 +7,7 @@ using UnityEngine.EventSystems;
 ///  • hold anywhere on the LEFT half  (or A / ←)  = walk back at backSpeed
 ///  • quick tap anywhere (shorter than tapMaxSeconds, little movement), swipe up, or Space = jump
 ///    (play hopImpulse 5.2 straight up — BeanImpulse keeps 6.4 for the proofs — plus the run speed the bean
-///     already has). A tap is a skip-hop only when |vx| < 2; a tap at run speed keeps the full arc.
+///     already has). A tap is a skip-hop only when |vx| < 0.85 × runSpeed; a tap at run speed keeps the full arc.
 ///    Coyote time, jump buffer, variable height (release early → vy × cutFactor).
 ///  • touches that begin over UI (EventSystem.IsPointerOverGameObject) are ignored.
 /// BeanImpulse stays on the bean for the physics proofs (they read its fields and AddForce themselves); this
@@ -15,10 +15,12 @@ using UnityEngine.EventSystems;
 public class BeanController : MonoBehaviour
 {
     [Header("Run")]
-    public float runSpeed = 2.8f;       // m/s, hold right half. Measured run 2.6–2.8. Damped air time ~0.50 s → 1.40 m centre travel (capsule r 0.38)
+    public float runSpeed = 2.36f;      // commanded; burlap friction holds the measured run at ~2.2 m/s (old 2.8 → 2.63 measured).
+                                        // Imagine bean-motion/285 barely translates (≤0.8 bean-heights/s); 2.2 is the slowest run that still clears the gaps
     public float backSpeed = 1.6f;      // m/s, hold left half
-    public float groundAccel = 16f;     // m/s² toward the wanted speed on the burlap
-    public float groundBrake = 22f;     // m/s² back to rest when nothing is held
+    public float groundAccel = 13.5f;   // m/s² requested; BurlapGrip friction (0.35 × 22) eats ~7.7, so the bean eases in at ~6 (~0.37 s to run).
+                                        // 285.mp4 eases in over ~1.5 s; the old 16 netted ~8.3 m/s²
+    public float groundBrake = 1f;      // m/s² on top of burlap friction (~7.7): ~0.3 s plush glide to rest (old 22 + friction stopped in ~0.09 s)
     public float airAccel = 5f;         // reduced air control
 
     [Header("Jump (play values — BeanImpulse keeps 6.4 for the proofs)")]
@@ -42,6 +44,16 @@ public class BeanController : MonoBehaviour
     public int Facing { get; private set; } = 1;
     /// −1 .. +1 horizontal input this frame (−1 = walk back, +1 = run).
     public float InputX { get; private set; }
+
+    /// Test-only hold (−1..1) added to the keyboard axis so PlayMode tests run the real physics path.
+    public static float TestHoldX;
+    /// Test-only full (held) jump request, the same path as Space down.
+    public void TestJump() { RequestJump(); _jumpHeld = true; }
+    /// Test-only: request a held jump in FixedUpdate once x passes this (NaN = off), and record take-off,
+    /// landing and apex in physics time so measurements do not depend on editor frame size.
+    public static float TestJumpAtX = float.NaN;
+    public static float TestTakeoffT, TestLandT, TestTakeoffY, TestApexY, TestTakeoffX, TestLandX;
+    bool _testAir;
     public bool Grounded { get; private set; }
     /// Seconds spent running on the ground; set once the player has run and then jumped (HUD hint fade).
     public float RunTime { get; private set; }
@@ -135,12 +147,15 @@ public class BeanController : MonoBehaviour
         float key = 0f;
         if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) key += 1f;
         if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) key -= 1f;
+        key += TestHoldX; // play-mode tests drive the real controller (0 in the game)
         if (Input.GetKeyDown(KeyCode.Space)) { RequestJump(); _spaceJump = true; _jumpHeld = true; }
         if (Input.GetKeyUp(KeyCode.Space) && _spaceJump) { _spaceJump = false; Release(); }
 
         // held pointers → run / walk back by screen half (right half wins when both are held)
         float hold = 0f;
-        float half = Screen.width * 0.5f;
+        // split at the centre of the safe area (notch / home-indicator insets), not the raw screen width
+        var safe = Screen.safeArea;
+        float half = safe.x + safe.width * 0.5f;
         for (int i = 0; i < _ptrs.Count; i++)
         {
             var p = _ptrs[i];
@@ -220,6 +235,14 @@ public class BeanController : MonoBehaviour
         Grounded = CheckGrounded();
         var v = _rb.linearVelocity;
 
+        if (!float.IsNaN(TestJumpAtX) && Grounded && _rb.position.x >= TestJumpAtX)
+        { TestJumpAtX = float.NaN; RequestJump(); _jumpHeld = true; }
+        if (_testAir)
+        {
+            TestApexY = Mathf.Max(TestApexY, _rb.position.y);
+            if (Grounded && v.y <= 0.05f) { _testAir = false; TestLandT = Time.fixedTime; TestLandX = _rb.position.x; }
+        }
+
         if (Grounded && v.y <= 0.3f) _coyote = coyoteTime;
         else _coyote -= dt;
         _buffer -= dt;
@@ -237,17 +260,19 @@ public class BeanController : MonoBehaviour
         {
             if (v.y < 0f) v.y = 0f;
             _rb.linearVelocity = v;
-            _rb.AddForce(Vector3.up * hopImpulse, ForceMode.Impulse);
-            _takeoffVy = hopImpulse / Mathf.Max(0.01f, _rb.mass);
+            float impulse = hopImpulse * LevelRunner.HopScale; // same apex under the level's gravityScale
+            _rb.AddForce(Vector3.up * impulse, ForceMode.Impulse);
+            _takeoffVy = impulse / Mathf.Max(0.01f, _rb.mass);
             // a tap while standing or strolling is the small 285 step-hop; a tap at run speed is the full
             // gap-clearing arc so players never fall short at a gap for tapping instead of swiping
-            _tapHop = _tapRequested && Mathf.Abs(v.x) < 2.0f;
+            _tapHop = _tapRequested && Mathf.Abs(v.x) < runSpeed * 0.85f;
             _tapRequested = false;
             _coyote = 0f;
             _buffer = 0f;
             _cutDone = false;
             _releaseQueued = false;
             if (RunTime > 0.4f) HasRunAndJumped = true;
+            _testAir = true; TestTakeoffT = Time.fixedTime; TestTakeoffY = TestApexY = _rb.position.y; TestTakeoffX = _rb.position.x; TestLandT = -1f;
             OnJump?.Invoke();
             return;
         }

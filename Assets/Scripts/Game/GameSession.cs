@@ -13,6 +13,16 @@ public class GameSession : MonoBehaviour
     public int beansCollected;
     public int beansTotal;
 
+    /// Result of the most recent clear, filled in before OnLevelClear fires.
+    public int lastStars;
+    public float lastSeconds;
+    public bool lastImproved;
+
+    float _levelStart;
+
+    /// Seconds spent in the live level (scaled time, so the pause menu does not count).
+    public float ElapsedSeconds => phase == Phase.Play ? Time.time - _levelStart : lastSeconds;
+
     /// (levelId, beansCollected, beansTotal)
     public static event System.Action<int, int, int> OnLevelClear;
     public static event System.Action<int, int> OnBeansChanged;
@@ -31,6 +41,23 @@ public class GameSession : MonoBehaviour
         currentLevelId = PlayerProgress.LastPlayed;
         BootQuality();
         if (GetComponent<EscapeAudio>() == null) gameObject.AddComponent<EscapeAudio>();
+        GameSettings.Apply(); // volumes, mute, graphics tier (Low overrides the BootQuality shadows)
+        EnsureTitleFlow();
+    }
+
+    /// The committed Escape.unity predates the "Title Flow" object that BuildEscapeScene adds,
+    /// so without this the scene plays with no menus. One lookup at boot, never per frame.
+    /// iOS can kill a backgrounded app without another callback: flush progress and settings now.
+    /// TitleFlow.OnApplicationPause opens the Pause card (timeScale 0) for the same event.
+    void OnApplicationPause(bool paused)
+    {
+        if (paused) PlayerPrefs.Save();
+    }
+
+    static void EnsureTitleFlow()
+    {
+        if (FindAnyObjectByType<TitleFlow>() == null)
+            new GameObject("Title Flow").AddComponent<TitleFlow>();
     }
 
     static void BootQuality()
@@ -75,6 +102,7 @@ public class GameSession : MonoBehaviour
         if (runner != null) runner.LoadLevel(catalog.Get(currentLevelId));
         beansTotal = runner != null ? runner.PickupCount : 0;
         OnBeansChanged?.Invoke(beansCollected, beansTotal);
+        _levelStart = Time.time;
         SetPhase(Phase.Play);
     }
 
@@ -104,10 +132,14 @@ public class GameSession : MonoBehaviour
     public void CompleteLevel()
     {
         if (phase != Phase.Play) return;
+        lastSeconds = Time.time - _levelStart;
         PlayerProgress.ClearBeat(currentLevelId);
+        lastStars = PlayerProgress.StarsFor(beansCollected, beansTotal, lastSeconds, Current.parSeconds);
+        lastImproved = PlayerProgress.RecordClear(currentLevelId, lastStars, lastSeconds);
         SetPhase(Phase.Clear);
         EscapeAudio.Play(EscapeAudio.Sfx.Clear);
-        Debug.Log($"LEVEL_CLEAR L{currentLevelId} beans={beansCollected}/{beansTotal} unlocked={PlayerProgress.Unlocked}");
+        Haptics.Pulse();
+        Debug.Log($"LEVEL_CLEAR L{currentLevelId} beans={beansCollected}/{beansTotal} stars={lastStars} time={lastSeconds:0.0}s unlocked={PlayerProgress.Unlocked}");
         OnLevelClear?.Invoke(currentLevelId, beansCollected, beansTotal);
     }
 

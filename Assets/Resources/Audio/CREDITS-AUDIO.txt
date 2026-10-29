@@ -1,0 +1,13 @@
+Espresso Escape - audio credits (shown in-game under Settings > Credits)
+
+Gameplay sounds and haptics: Casa sound (original). P0 kit v7, see P0/P0-PROVENANCE.md.
+UI sounds and jingles: Kenney (www.kenney.nl), CC0 1.0. Interface Sounds 1.0 and Music Jingles. See UI/KENNEY-*-LICENSE.txt.
+Music via OpenGameArt.org, CC0 1.0 (no attribution required; credited as a courtesy):
+  Menu  "Coffee House Bump" by OatCog              https://opengameart.org/content/coffee-house-bump
+  L1    "chill guitar" by Alex McCulloch (Pro Sensory)  https://opengameart.org/content/chill-guitar
+  L2    "Lofi Hip Hop Loop" by omfgdude (OMF-Games) https://opengameart.org/content/lofi-hip-hop-loop
+  L3    "In the Lobby" by Umplix                   https://opengameart.org/content/in-the-lobby
+  L4    "Calm fireplace guitar song" by ShggothSlave https://opengameart.org/content/calm-fireplace-guitar-song
+  L5    "jazz improvisation looped" by Alex McCulloch (Pro Sensory) https://opengameart.org/content/jazz-improvisation-looped
+  Alex McCulloch asks on both pages to "include my name"; that courtesy credit is in the in-game Credits.
+No CC-BY audio is used.

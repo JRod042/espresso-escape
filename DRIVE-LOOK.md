@@ -26,7 +26,7 @@ Drive README (`1yM9SuouwtE2b_eMLBNXes3wto8hEbNh0`):
 | generated set video 2d7dcad9 | `1OpyHz-TWdP1xodJru_k82Hd8iJgLsWbE` | `DriveLook/imagine/gen-2d7dcad9.mp4` |
 | generated video 5ee82b85 | `1lvUcLKIqU9KtvlBPYzX1UMzhyJjCFB6g` | `DriveLook/imagine/gen-5ee82b85.mp4` |
 | generated video 8ec4e4ae | `195EFe66Ln8HcL5D2xT-hDlDEJFVD6ARr` | `DriveLook/imagine/gen-8ec4e4ae.mp4` |
-| generated video 8ec4e4ae (1) | `1jzQDV00wWLnTClLne5B9faA_idWJxlBS` | `DriveLook/imagine/gen-8ec4e4ae-1.mp4` if present, else the jpg |
+| generated video 8ec4e4ae (1) | trashed 2026-10-29 as a byte-for-byte duplicate of 8ec4e4ae | local `gen-8ec4e4ae-1.jpg` removed |
 | ScreenRecording_09-07-2026 23-17-59_1.mp4 | `1h-bAYoJFn1XbIHC_MJ6MRCjow_EsSjM-` | reject recording. Do not use as the look. |
 | README | `1yM9SuouwtE2b_eMLBNXes3wto8hEbNh0` | this file |
 
